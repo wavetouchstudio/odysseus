@@ -128,6 +128,7 @@ _TIMEOUT_EXEMPT_PREFIXES = (
     "/api/cookbook/setup",  # remote pacman/apt installs
     "/api/upload",          # large files
     "/api/image",           # diffusion proxies (inpaint/harmonize/upscale/etc.) — own 120s httpx timeout
+    "/api/subagent",        # one-shot LLM call — timeout controlled by caller
 )
 
 
@@ -288,6 +289,19 @@ if AUTH_ENABLED:
                 if not path.startswith("/api/"):
                     return RedirectResponse(url="/login", status_code=302)
                 return JSONResponse(status_code=401, content={"error": "Setup required"})
+
+            # --- Subagent key bypass (programmatic one-shot LLM calls) ---
+            _subagent_secret = os.getenv("SUBAGENT_SECRET", "")
+            if (
+                _subagent_secret
+                and path.startswith("/api/subagent")
+                and secrets.compare_digest(
+                    request.headers.get("X-Subagent-Key", ""), _subagent_secret
+                )
+            ):
+                request.state.current_user = "subagent"
+                request.state.api_token = False
+                return await call_next(request)
 
             # --- Bearer token auth (API tokens for external integrations) ---
             auth_header = request.headers.get("authorization", "")
@@ -725,6 +739,9 @@ app.include_router(setup_contacts_routes())
 
 from companion import setup_companion_routes
 app.include_router(setup_companion_routes())
+
+from routes.subagent_routes import setup_subagent_routes
+app.include_router(setup_subagent_routes())
 
 # ========= ROUTES (kept in app.py) =========
 

@@ -124,6 +124,15 @@ def _resolve_model(spec: str, owner: Optional[str] = None) -> Tuple[str, str, Di
                         ]
                 except Exception:
                     model_ids = []
+                # Fall back to cached model list when live probe fails (e.g. A1111, SD WebUI)
+                if not model_ids and ep.cached_models:
+                    try:
+                        import json as _json
+                        _cached = _json.loads(ep.cached_models) if isinstance(ep.cached_models, str) else ep.cached_models
+                        if isinstance(_cached, list):
+                            model_ids = [str(m) for m in _cached if m]
+                    except Exception:
+                        pass
 
                 # Exact match first
                 for mid in model_ids:
@@ -1584,10 +1593,12 @@ async def do_generate_image(content: str, session_id: Optional[str] = None, owne
         quality = _settings["image_quality"]
 
     # Auto-detect best available image model if still not set
+    _a1111_base = None      # set if we detect an A1111 endpoint during auto-detect
+    _a1111_api_key = None   # api_key for that endpoint (may be "user:pass" for Basic auth)
     if not model_spec:
         for candidate in ("gpt-image-1.5", "gpt-image-1", "dall-e-3"):
             try:
-                _resolve_model(candidate, owner=owner)
+                _resolve_model(candidate)
                 model_spec = candidate
                 break
             except ValueError:
@@ -1609,10 +1620,40 @@ async def do_generate_image(content: str, session_id: Optional[str] = None, owne
                     _img_eps = _img_q.all()
                     for _iep in _img_eps:
                         _ibase = _iep.base_url.rstrip("/")
-                        if not _ibase.endswith("/v1"):
-                            _ibase += "/v1"
+                        _ikey = _iep.api_key or ""
+                        _iauth = tuple(_ikey.split(":", 1)) if _ikey and ":" in _ikey else None
+                        # Try A1111/AUTOMATIC1111 detection via sdapi paths
+                        for _a1111_probe in ("/sdapi/v1/sd-models", "/sdapi/v1/samplers", "/sdapi/v1/options"):
+                            try:
+                                _r = _req.get(_ibase + _a1111_probe, auth=_iauth, timeout=3)
+                                if _r.status_code == 200:
+                                    _a1111_base = _ibase
+                                    _a1111_api_key = _ikey
+                                    model_spec = "stable-diffusion"
+                                    break
+                            except Exception:
+                                continue
+                        if _a1111_base:
+                            break
+                        # sdapi paths didn't respond — fall back to root reachability.
+                        # If the server answers at all, treat it as A1111 and let
+                        # /sdapi/v1/txt2img speak for itself at generation time.
+                        if not _a1111_base:
+                            try:
+                                _r = _req.get(_ibase + "/", auth=_iauth, timeout=3)
+                                if _r.status_code < 500:
+                                    _a1111_base = _ibase
+                                    _a1111_api_key = _ikey
+                                    model_spec = "stable-diffusion"
+                                    break
+                            except Exception:
+                                pass
+                        if _a1111_base:
+                            break
+                        # Try OpenAI-compatible /v1/models
+                        _ibase_v1 = _ibase if _ibase.endswith("/v1") else _ibase + "/v1"
                         try:
-                            _r = _req.get(_ibase + "/models", timeout=3)
+                            _r = _req.get(_ibase_v1 + "/models", timeout=3)
                             _r.raise_for_status()
                             _mids = [m.get("id") for m in (_r.json().get("data") or []) if m.get("id")]
                             if _mids:
@@ -1628,19 +1669,68 @@ async def do_generate_image(content: str, session_id: Optional[str] = None, owne
             return {"error": "No image model found. Configure one in Admin → Image Generation."}
 
     # Resolve the model to find the right endpoint
-    try:
-        url, model_id, headers = _resolve_model(model_spec, owner=owner)
-    except ValueError:
-        return {"error": f"No endpoint found with image model '{model_spec}'. "
-                "Configure an OpenAI-compatible endpoint with image generation support."}
+    # If A1111 was detected during auto-detect, skip _resolve_model entirely
+    is_a1111 = bool(_a1111_base)
+    _a1111_auth = None
+    if _a1111_base:
+        base_url = _a1111_base
+        model_id = "stable-diffusion"
+        headers = {}
+        if _a1111_api_key and ":" in _a1111_api_key:
+            _u, _p = _a1111_api_key.split(":", 1)
+            _a1111_auth = (_u, _p)
+    else:
+        try:
+            url, model_id, headers = _resolve_model(model_spec)
+        except ValueError:
+            return {"error": f"No endpoint found with image model '{model_spec}'. "
+                    "Configure an OpenAI-compatible endpoint with image generation support."}
+        base_url = url.replace("/chat/completions", "").replace("/v1/messages", "").rstrip("/")
+        # Probe for A1111 on resolved local-diffusion endpoints.
+        # Strip /v1 first — A1111 sits at the server root, not under /v1.
+        if not ("gpt-image" in model_id.lower() or "dall-e" in model_id.lower()):
+            _probe_base = base_url[:-3] if base_url.endswith("/v1") else base_url
+            # Look up stored api_key for this endpoint to build Basic auth
+            try:
+                from src.database import SessionLocal as _IGSL, ModelEndpoint as _IGEP
+                _igdb = _IGSL()
+                try:
+                    _ep = _igdb.query(_IGEP).filter(
+                        _IGEP.base_url.in_([_probe_base, _probe_base + "/v1"]),
+                        _IGEP.is_enabled == True,
+                    ).first()
+                    _ep_key = (_ep.api_key or "") if _ep else ""
+                finally:
+                    _igdb.close()
+            except Exception:
+                _ep_key = ""
+            _resolved_auth = tuple(_ep_key.split(":", 1)) if _ep_key and ":" in _ep_key else None
+            for _a1111_probe in ("/sdapi/v1/sd-models", "/sdapi/v1/samplers", "/sdapi/v1/options"):
+                try:
+                    _probe = httpx.get(_probe_base + _a1111_probe, auth=_resolved_auth, timeout=3)
+                    if _probe.status_code == 200:
+                        is_a1111 = True
+                        base_url = _probe_base
+                        _a1111_auth = _resolved_auth
+                        break
+                except Exception:
+                    continue
+            # Root reachability fallback — if server answers, assume A1111
+            if not is_a1111:
+                try:
+                    _probe = httpx.get(_probe_base + "/", auth=_resolved_auth, timeout=3)
+                    if _probe.status_code < 500:
+                        is_a1111 = True
+                        base_url = _probe_base
+                        _a1111_auth = _resolved_auth
+                except Exception:
+                    pass
 
     # Detect if this is a GPT image model vs DALL-E vs local diffusion
     is_gpt_image = "gpt-image" in model_id.lower()
     is_dalle = "dall-e" in model_id.lower()
-    is_local_diffusion = not is_gpt_image and not is_dalle
+    is_local_diffusion = not is_gpt_image and not is_dalle and not is_a1111
 
-    # Build the images endpoint URL from the chat completions URL
-    base_url = url.replace("/chat/completions", "").replace("/v1/messages", "").rstrip("/")
     images_url = base_url + "/images/generations"
 
     # Validate size for cloud image models (local diffusion accepts any WxH)
@@ -1667,9 +1757,74 @@ async def do_generate_image(content: str, session_id: Optional[str] = None, owne
 
     logger.info(f"Image generation: model={model_id}, size={size}, quality={quality}, prompt={prompt[:80]}")
 
+    # Build explicit Basic auth header for A1111 to avoid challenge-response round trip
+    _a1111_headers = {}
+    if is_a1111 and _a1111_auth:
+        import base64 as _b64
+        _a1111_headers["Authorization"] = "Basic " + _b64.b64encode(
+            f"{_a1111_auth[0]}:{_a1111_auth[1]}".encode()
+        ).decode()
+
     try:
-        # GPT image models can take 30-120s+ depending on quality
-        async with httpx.AsyncClient(timeout=httpx.Timeout(connect=30.0, read=300.0, write=30.0, pool=30.0)) as client:
+        # GPT image models can take 30-120s+ depending on quality; A1111 uses shorter timeout
+        _read_timeout = 120.0 if is_a1111 else 300.0
+        async with httpx.AsyncClient(timeout=httpx.Timeout(connect=30.0, read=_read_timeout, write=30.0, pool=30.0)) as client:
+
+            # --- A1111 / AUTOMATIC1111 path ---
+            if is_a1111:
+                w, h = 512, 512
+                if "x" in size.lower():
+                    parts = size.lower().split("x")
+                    try:
+                        w, h = int(parts[0]), int(parts[1])
+                    except (ValueError, IndexError):
+                        pass
+                a1111_payload = {
+                    "prompt": prompt,
+                    "negative_prompt": "",
+                    "steps": 20,
+                    "width": w,
+                    "height": h,
+                    "cfg_scale": 7,
+                    "sampler_name": "Euler a",
+                }
+                logger.info(f"A1111 generation: {base_url}/sdapi/v1/txt2img size={w}x{h} prompt={prompt[:80]}")
+                resp = await client.post(base_url + "/sdapi/v1/txt2img", json=a1111_payload, auth=_a1111_auth)
+                await resp.aread()  # force full body buffer — response can be 3-5MB for 1024x1024
+                if resp.status_code != 200:
+                    return {"error": f"A1111 generation failed ({resp.status_code}): {resp.text[:500]}"}
+                images_b64 = resp.json().get("images", [])
+                if not images_b64:
+                    return {"error": "A1111 returned no images"}
+                img_dir = Path("data/generated_images")
+                img_dir.mkdir(parents=True, exist_ok=True)
+                filename = f"{uuid.uuid4().hex[:12]}.png"
+                (img_dir / filename).write_bytes(base64.b64decode(images_b64[0]))
+                image_url = f"/api/generated-image/{filename}"
+                image_id = ""
+                try:
+                    from src.database import SessionLocal as _GallerySL, GalleryImage
+                    new_id = str(uuid.uuid4())
+                    _gdb = _GallerySL()
+                    _gdb.add(GalleryImage(id=new_id, filename=filename, prompt=prompt,
+                                         model=model_id, size=f"{w}x{h}", quality="medium",
+                                         session_id=session_id, owner=owner))
+                    _gdb.commit()
+                    _gdb.close()
+                    image_id = new_id
+                except Exception as _ge:
+                    logger.warning(f"Failed to save A1111 gallery record: {_ge}")
+                return {
+                    "results": f"Generated image for: {prompt[:100]}",
+                    "image_url": image_url,
+                    "image_id": image_id,
+                    "image_prompt": prompt,
+                    "image_model": model_id,
+                    "image_size": f"{w}x{h}",
+                    "image_quality": "medium",
+                }
+
+            # --- OpenAI-compatible path ---
             resp = await client.post(images_url, json=payload, headers=headers)
 
             if resp.status_code != 200:

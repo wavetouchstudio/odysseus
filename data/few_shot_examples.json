@@ -1,0 +1,63 @@
+{
+  "_meta": {
+    "description": "Few-shot examples injected into agent calls keyed by tool short name. Each entry is a clean successful exchange that shows the model correct behaviour for that tool. Update this file from AI/Model Test Log.md in Obsidian as better examples accumulate — no server restart needed, file is read fresh per request.",
+    "loop": "test → log (Obsidian) → extract best responses → update this file → test again",
+    "format": "{ tool_name: [ { user, assistant } ] }"
+  },
+
+  "obsidian_append_content": [
+    {
+      "user": "Call obsidian_append_content with filepath=\"TestingArea/example.md\" and content=\"# Example\\n\\nThis is a test entry.\"",
+      "assistant": "Content appended successfully.",
+      "_source": "hermes3:8b T1 2026-06-05 — cleanest write response of all models"
+    }
+  ],
+
+  "obsidian_get_file_contents": [
+    {
+      "user": "Call obsidian_get_file_contents with filepath=\"4 Unreal/Mechanics.md\" then return only the items listed under the PLANNED section. The PLANNED section starts at the heading '## PLANNED — FROM DESIGN MANIFEST'. Stop before any section that starts with ##.",
+      "assistant": "- Block Throw (009)\n- Wall Slide & Jump (011, 012)\n- Double Jump (013)\n- Ledge Grab & Climb (014)\n- Rope & Zip Lines (040)\n- Glide (041)\n- Raccoon Grapple (042)\n- Squirrel Grapple (043)\n- Raccoon Climbing Jump (052)\n- Large Moving Platform (017)\n- Rotors & Traps (018)\n- Falling/Timed/Breaking Platforms (019)\n- Lava & Acid (024)\n- Status Cloud (025)\n- Thermal State (026)\n- Steam Activation (027)\n- Boiling & Freezing (028)\n- Water & Swimming (023)\n- Bonfire Save (020)\n- Bonfire Chest (021)\n- Random Drops (022)\n- Doors (010)\n- Power Module (032)\n- Electric Shock (031)\n- Cooking (036)\n- Accessories (055)\n- Punch Combo (015)\n- Block Throw / NPC Damage (009, 029)\n- Enemy Melee (034)\n- Enemy Ranged (035)\n- Immobile NPC (016)\n- Raccoon Multi-Tool (051)\n- Raccoon Scavenge (049)\n- Raccoon Tracing Goggles (050)\n- Badger Breakable Assets (044)\n- Badger Ground Slam (045)\n- Badger Fury (046)\n- Badger Sprint & Roll (047)\n- Badger Turret (048)\n- Squirrel Bounce Back (053)\n- Squirrel Tight Spaces (054)\n- Bush Hiding (039)\n- Underwater Hiding (038)\n- Light & Dark NPC (033)",
+      "_source": "devstral-medium-latest T2 2026-06-05 — full 44/44 items, cleanest output"
+    }
+  ],
+
+  "spawn_actor": [
+    {
+      "user": "Call spawn_actor with name=\"ExampleActor\" type=\"StaticMeshActor\" location=[0,0,0]",
+      "assistant": "Actor ExampleActor spawned successfully at [0, 0, 0].",
+      "_source": "hermes3:8b T3 2026-06-05 — clean spawn, correctly used name/type/location only (no mesh)"
+    }
+  ],
+
+  "obsidian_patch_content": [
+    {
+      "user": "Call obsidian_patch_content with filepath=\"4 Unreal/Mechanics.md\" target_type=\"heading\" target=\"Block Throw\" operation=\"replace\" content=\"### Block Throw\\n**Status:** Built — 2026-06-05\"",
+      "assistant": "Content patched successfully.",
+      "_source": "pattern — not yet tested at scale, promote first clean run here"
+    }
+  ],
+
+  "obsidian_simple_search": [
+    {
+      "user": "Call obsidian_simple_search with query=\"IMC_Throw\" and return the file names and matching lines found.",
+      "assistant": "Found matches in:\n- 4 Unreal/Mechanics.md: '`IMC_Throw` is added when X is pressed'\n- TestingArea/difficulties_gptoss20b.md: 'IMC_Throw double-fire bug'",
+      "_source": "pattern — not yet tested at scale, promote first clean run here"
+    }
+  ],
+
+  "find_actors_by_name": [
+    {
+      "user": "Call find_actors_by_name with pattern=\"LLM*\" and list the actor names returned.",
+      "assistant": "The tool returned a validation error (schema expects a list, tool returns a dict). The actors field in the result was empty. No actors matching LLM* are currently in the level. Use get_actors_in_level and filter by name prefix for reliable retrieval.",
+      "_source": "T4 2026-06-05 — tool has schema bug. Example shows the correct diagnosis and workaround."
+    }
+  ],
+
+  "get_actors_in_level": [
+    {
+      "user": "Call get_actors_in_level and return only the actors whose name starts with LLM.",
+      "assistant": "Actors starting with LLM:\n- LLMgptoss20b\n- LLMhermes3\n- LLMgemma4\n- LLMdevstralsmall\n- LLMdevstralmedium\n- LLMgeminiflash\n- LLMgptoss120b\n- LLMollamacloud120b",
+      "_source": "workaround for find_actors_by_name schema bug — direct level scan + filter"
+    }
+  ]
+}

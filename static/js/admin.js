@@ -740,7 +740,7 @@ function initEndpointForm() {
   function _apiEndpointKind() {
     return (kindSel && kindSel.value) ? kindSel.value : 'api';
   }
-  function _normalizeBaseUrl(raw) {
+  function _normalizeBaseUrl(raw, opts = {}) {
     let u = raw.trim();
     // Fix common protocol typos
     u = u.replace(/^https?:\/(?!\/)/, m => m + '/');  // https:/ → https://
@@ -766,7 +766,8 @@ function initEndpointForm() {
       }
     } catch(e) {}
     // Ensure /v1 suffix for bare host:port URLs (not cloud providers)
-    if (!u.includes('api.') && !u.includes('openrouter') && !u.includes('ollama.com') && !u.endsWith('/v1')) {
+    // Skip for image endpoints (e.g. A1111 at host:7860 — no /v1 prefix)
+    if (!opts.skipV1 && !u.includes('api.') && !u.includes('openrouter') && !u.includes('ollama.com') && !u.endsWith('/v1')) {
       try {
         const parsed = new URL(u);
         if (!parsed.pathname || parsed.pathname === '/') {
@@ -1019,7 +1020,9 @@ function initEndpointForm() {
       msg.textContent = ''; msg.className = '';
       const raw = (el('adm-epLocalUrl').value || '').trim();
       if (!raw) { msg.textContent = 'Enter a base URL (e.g. http://localhost:8002/v1)'; msg.className = 'admin-error'; return; }
-      const url = _normalizeBaseUrl(raw);
+      const lt = el('adm-epLocalType');
+      const isImageEndpoint = lt && lt.value === 'image';
+      const url = _normalizeBaseUrl(raw, { skipV1: isImageEndpoint });
       const keyEl = el('adm-epLocalApiKey');
       const apiKey = keyEl ? keyEl.value.trim() : '';
       localAddBtn.disabled = true; localAddBtn.textContent = 'Adding...';

@@ -451,6 +451,12 @@ class McpManager:
         }
         if images:
             result_dict["images"] = images
+        # Promote image_url / image_* fields from generate_image text output
+        if not is_error and "image_url:" in output:
+            for line in output.splitlines():
+                for key in ("image_url", "image_prompt", "image_model", "image_size", "image_quality"):
+                    if line.startswith(f"{key}:"):
+                        result_dict[key] = line[len(key) + 1:].strip()
         return result_dict
 
     async def _reconnect_builtin(self, server_id: str) -> bool:

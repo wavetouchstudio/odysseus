@@ -1,4 +1,50 @@
-# Odysseus
+# Odysseus — wavetouchstudio fork
+
+> **This is a private fork of [pewdiepie-archdaemon/odysseus](https://github.com/pewdiepie-archdaemon/odysseus).**
+> Custom patches are tracked in [`patches/`](patches/) and committed to this repo.
+> See [Syncing with upstream](#syncing-with-upstream) below to pull in updates.
+
+---
+
+## Custom Changes
+
+All modifications live in `patches/claude-mcp-fixes.patch` and are already applied to this repo's `main`. See [`patches/README.md`](patches/README.md) for details on each change.
+
+**Summary:**
+- MCP tool schemas (Obsidian, Unreal, etc.) are no longer filtered out by RAG relevance — they always reach the model
+- Explicit MCP usage rules and common sequences injected into the system prompt when MCP tools are active
+
+---
+
+## Syncing with Upstream
+
+Pull new changes from the original repo into this fork:
+
+```
+git fetch upstream
+git rebase upstream/main
+git push origin main
+```
+
+If `agent_loop.py` has a conflict (upstream changed the same lines as a patch):
+
+```
+# resolve the conflict in src/agent_loop.py, then:
+git add src/agent_loop.py
+git rebase --continue
+git push origin main
+```
+
+After a clean sync, regenerate the patch file to keep it current:
+
+```
+git diff upstream/main src/agent_loop.py > patches/claude-mcp-fixes.patch
+git add patches/claude-mcp-fixes.patch
+git commit -m "Update patch against upstream/main"
+git push origin main
+```
+
+---
 
 ```
 ───────────────────────────────────────────────

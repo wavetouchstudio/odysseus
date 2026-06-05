@@ -1,0 +1,195 @@
+diff --git a/src/agent_loop.py b/src/agent_loop.py
+index 6bd9ba8..31f5d20 100644
+--- a/src/agent_loop.py
++++ b/src/agent_loop.py
+@@ -119,9 +119,10 @@ _API_AGENT_RULES = """\
+ - If the active editor document is an email draft/compose window, treat that open email as the target for "write this", "write the email", "reply with...", "make it say...", "draft this", and similar requests. Do NOT create another document, search/list/manage documents, or open a different reply unless the user explicitly asks. Edit the open email draft with `edit_document` or `update_document`; preserve To/Cc/Bcc/Subject/In-Reply-To/References/X-* header lines unless the user asks to change them.
+ - "Give suggestions / feedback / review / how can I improve this / what would make it better" about the OPEN document → call `suggest_document`, do NOT write a prose list of ideas in chat. It creates inline accept/reject bubbles on the doc. Give concrete `find`/`replace`/`reason` items. To suggest an ADDITION (e.g. "add a bow to the SVG", a new section), set `find` to a short existing anchor snippet and `replace` to that same snippet PLUS the new content. Only answer in prose when no document is open, or the request is purely conceptual with no concrete change to propose.
+ - BIAS TOWARD ACTION on edit requests. If the user says "edit out X", "remove the Y paragraph", "change Z" — call the edit tool with your best interpretation. Don't ask for clarification on minor ambiguity. The user can undo.
+-- AFTER A TOOL SUCCEEDS, do not second-guess. A success response means it worked. Reply in ONE short sentence confirming what was done. No verification thinking, no re-analyzing — move on.
++- AFTER A TOOL SUCCEEDS, do not second-guess. A success response means it worked. No verification thinking, no re-analyzing — move on. Exception: if the tool returned DATA the user asked for (a list, file contents, search results, properties), present that data directly in your reply — do not just say "done" and omit it.
+ - AFTER A TOOL FAILS, DO NOT GO SILENT. The user expects a follow-up: retry with a fix, run a diagnostic (`tail`, `ls`, `which`), or explicitly tell them what didn't work and what you'll try next. Failure is not a stopping condition.
+ - YOU DECLARE WHEN THE JOB IS DONE — not a timer. Keep taking concrete steps while the task still needs them; don't quit early just because you've made a few calls. Three ways to end a turn: (1) DONE — before declaring it, verify every concrete deliverable the user asked for actually exists or succeeded; then stop calling tools and write the final answer (that IS your "done" signal); (2) BLOCKED — you can't proceed (missing capability, permission denied, unobtainable data), so state plainly what's blocking you and stop; (3) keep going with the single most useful next step. Never trail off mid-task without (1) or (2), and never repeat a call you already ran.
++- ANY image creation request ("generate", "create", "make", "draw", "show me", or even just a visual description like "a dog on a bike") → call `generate_image` with `prompt` = the description. This tool connects to a local Stable Diffusion server. Do NOT claim you cannot generate images. Do NOT describe the image in text instead. CALL THE TOOL.
+ - Calendar: call `manage_calendar` with `action=list_calendars` FIRST before create/update/delete operations.
+ - "Create/add/write a note" / "notes" / "todos" / "remind me to X at <time>" → use `manage_notes`. Do NOT store notes in `manage_memory`; memory is for persistent facts/preferences about the user, not note content. For reminders, include a `due_date`; for todos, use `note_type=checklist` when appropriate. `manage_tasks` is for RECURRING background AI jobs, NOT for one-off user reminders.
+ - "Disable/turn off/enable/turn on <tool>" (shell, search, research, browser, documents, incognito, etc.) → call `ui_control` with `toggle <name> <on|off>`. Aliases accepted: shell→bash, search→web, deepresearch→research, documents→document_editor. NEVER record this as a memory — the user wants the toggle flipped, not a note about preferring it.
+@@ -169,6 +170,29 @@ _API_AGENT_RULES = """\
+   - After `create_session` returns id `89effa28`: "Created [New Chat](#session-89effa28) — click to switch."
+   - Listing sessions: "1. [Big Chat](#session-abc123) — 2h ago, 2. [Code Review](#session-def456) — 5h ago\""""
+ 
++_MCP_USAGE_INSTRUCTIONS = """
++## MCP Tool Usage — Quick Reference
++When using MCP tools: never guess file paths, actor names, or asset paths — use list/search/find tools first to get exact values.
++
++## Obsidian MCP — Common Sequences
++- "Find and read a note about X": call obsidian_simple_search(query=X), then obsidian_get_file_contents(filepath=<match>)
++- "Update a section in a note": call obsidian_get_file_contents first to confirm exact heading text, then obsidian_patch_content(target_type="heading", target=<exact heading>, operation="replace"/"append")
++- "Create a new note": call obsidian_append_content — it creates the file automatically if the path does not exist
++- "What's in folder X": call obsidian_list_files_in_dir(dirpath=X)
++- obsidian_patch_content kwargs must be a JSON string: {"kwargs": "{\\"key\\": value}"}
++
++## Unreal Engine MCP — Common Sequences
++- "What's in the level": call get_actors_in_level()
++- "Change a property on actor X": call find_actors_by_name(pattern="*X*") to get exact label, get_actor_properties(name=<label>) to confirm property name, then set_actor_property(name=<label>, property_name=<name>, property_value=<string>)
++- property_value is always a string: booleans as "True"/"False", floats as "5000.0", vectors as "100.0,0.0,50.0", enums as their string name
++- "Move actor X": call find_actors_by_name, then set_actor_transform(name=<label>, location=[X,Y,Z])
++- "Spawn a blueprint": call list_folder_contents to get exact content path, then spawn_blueprint_actor(blueprint_name=<path>, actor_name=<unique name>)
++- "Create a blueprint with a mesh": create_blueprint → add_component_to_blueprint(component_type="StaticMeshComponent") → set_component_property(kwargs="{\"StaticMesh\": \"<path>\"}") → compile_blueprint
++- set_component_property kwargs must be a JSON-encoded string, not an object: kwargs="{\"Intensity\": 5000.0}"
++- "Wire a function to BeginPlay": get_actions_for_class to find exact function name → find_blueprint_nodes(event_type="BeginPlay") to get node ID → create_node_by_action_name to create function node → connect_blueprint_nodes(source_pin="then", target_pin="execute") → compile_blueprint
++- "Check for errors": call get_output_logs(last_n=20)
++"""
++
+ # Each tool section is keyed by tool name(s) it covers.
+ # Sections with multiple tools use a tuple key.
+ TOOL_SECTIONS = {
+@@ -469,6 +493,7 @@ _API_HOSTS = frozenset([
+     "api.together.xyz", "api.fireworks.ai",
+     "api.perplexity.ai", "api.x.ai",
+     "ollama.com", "api.venice.ai",
++    "generativelanguage.googleapis",
+     "api.githubcopilot.com",
+     # Local OpenAI-compatible endpoints (llama.cpp, vLLM, LM Studio, etc.).
+     # Without these, `_is_api_model` falls back to keyword sniffing on the
+@@ -525,6 +550,63 @@ def _endpoint_lookup_keys(endpoint_url: str) -> List[str]:
+         pass
+     return keys
+ 
++
++def _mcp_matches_relevant(qualified: str, relevant: set) -> bool:
++    """Match a qualified MCP name (mcp__serverid__toolname) against a set of short names."""
++    if qualified in relevant:
++        return True
++    parts = qualified.split("__", 2)
++    return len(parts) == 3 and parts[2] in relevant
++
++
++def _select_api_tool_schemas(function_schemas, mcp_schemas, relevant_tools, needs_admin):
++    if relevant_tools:
++        base = [s for s in function_schemas
++                if s.get("function", {}).get("name") in relevant_tools]
++        # When caller scopes tools, filter MCP schemas too — sending all 100+ MCP
++        # schemas blows the context window of smaller models (issue: subagent route).
++        filtered_mcp = [s for s in mcp_schemas
++                        if _mcp_matches_relevant(
++                            s.get("function", {}).get("name", ""), relevant_tools)]
++        return base + filtered_mcp
++    elif needs_admin:
++        base = list(function_schemas)
++    else:
++        base = [s for s in function_schemas
++                if s.get("function", {}).get("name") not in _ADMIN_SCHEMA_NAMES]
++    return base + list(mcp_schemas)
++
++
++def _shorten_mcp_schemas(schemas: list) -> tuple:
++    """Rename mcp__serverid__toolname → toolname in schemas sent to the model.
++
++    Small models are confused by UUID-prefixed names and hallucinate tool names
++    instead of using native function calling. Short names fix this without
++    changing execution — the returned mapping is used by _resolve_tool_blocks
++    to expand short names back to qualified names before dispatch.
++
++    Returns (renamed_schemas, short_to_qualified_map).
++    On name collision (two servers with the same short name), the qualified
++    name is kept so the model can still distinguish them.
++    """
++    renamed = []
++    mapping: dict = {}
++    for schema in schemas:
++        fn = schema.get("function", {})
++        name = fn.get("name", "")
++        parts = name.split("__", 2)
++        if len(parts) == 3 and parts[0] == "mcp":
++            short = parts[2]
++            if short in mapping:
++                renamed.append(schema)
++                continue
++            mapping[short] = name
++            renamed.append({**schema, "function": {**fn, "name": short}})
++        else:
++            renamed.append(schema)
++    return renamed, mapping
++
++
+ # Admin tool keywords — if the last user message contains any of these, include admin tools
+ _ADMIN_KEYWORDS = [
+     "session", "sessions", "chat", "chats", "conversation", "conversations",
+@@ -1092,13 +1174,21 @@ def _build_base_prompt(
+ 
+ 
+ 
+-def _resolve_tool_blocks(round_response: str, native_tool_calls: list, round_num: int):
+-    """Choose native function calls or fenced code block parsing. Returns (tool_blocks, used_native)."""
++def _resolve_tool_blocks(round_response: str, native_tool_calls: list, round_num: int,
++                         name_mapping: dict = None):
++    """Choose native function calls or fenced code block parsing. Returns (tool_blocks, used_native).
++
++    name_mapping is the short→qualified reverse map from _shorten_mcp_schemas. When present,
++    short names returned by the model are expanded back to qualified names before dispatch.
++    """
+     used_native = False
+     if native_tool_calls:
+         tool_blocks = []
+         for tc in native_tool_calls:
+             tc_name = tc.get("name", "")
++            if name_mapping and tc_name in name_mapping:
++                tc = {**tc, "name": name_mapping[tc_name]}
++                tc_name = tc["name"]
+             tc_args = tc.get("arguments", "{}")
+             block = function_call_to_tool_block(tc_name, tc_args)
+             if block:
+@@ -1650,6 +1740,7 @@ async def stream_agent_loop(
+     backend_gen_tps = 0      # backend-reported true gen speed (llama.cpp timings)
+     backend_prefill_tps = 0  # backend-reported prefill speed
+     total_tool_calls = 0  # for budget enforcement
++    _mcp_name_mapping: dict = {}  # short MCP name → qualified name, rebuilt each round
+ 
+     # Loop-breaker state. Small models (e.g. deepseek-v4-flash) can get
+     # stuck firing the same tool call over and over with no text — burns
+@@ -1716,29 +1807,18 @@ async def stream_agent_loop(
+             # write the answer instead of flailing further.
+             all_tool_schemas = []
+         elif _is_api_model:
+-            # Filter schemas by RAG-selected tools (if available)
+-            if _relevant_tools:
+-                base_schemas = [
+-                    s for s in FUNCTION_TOOL_SCHEMAS
+-                    if s.get("function", {}).get("name") in _relevant_tools
+-                ]
+-                _mcp_filtered = [
+-                    s for s in mcp_schemas
+-                    if s.get("function", {}).get("name") in _relevant_tools
+-                ]
+-                all_tool_schemas = base_schemas + _mcp_filtered
+-            else:
+-                base_schemas = FUNCTION_TOOL_SCHEMAS if _needs_admin else [
+-                    s for s in FUNCTION_TOOL_SCHEMAS
+-                    if s.get("function", {}).get("name") not in _ADMIN_SCHEMA_NAMES
+-                ]
+-                all_tool_schemas = base_schemas + mcp_schemas
++            # Filter builtin schemas by RAG-selected tools, but ALWAYS include MCP
++            # schemas — see _select_api_tool_schemas (#1789).
++            all_tool_schemas = _select_api_tool_schemas(
++                FUNCTION_TOOL_SCHEMAS, mcp_schemas, _relevant_tools, _needs_admin,
++            )
+             if disabled_tools:
+                 all_tool_schemas = [
+                     t for t in all_tool_schemas
+                     if t.get("function", {}).get("name") not in disabled_tools
+                     and t.get("name") not in disabled_tools
+                 ]
++            all_tool_schemas, _mcp_name_mapping = _shorten_mcp_schemas(all_tool_schemas)
+         else:
+             # Local: only MCP schemas when message suggests MCP tool usage
+             _last_content = _last_user.lower()
+@@ -1908,7 +1988,7 @@ async def stream_agent_loop(
+                 yield chunk
+             # Intercept [DONE] — don't forward until all rounds finish
+ 
+-        tool_blocks, used_native = _resolve_tool_blocks(round_response, native_tool_calls, round_num)
++        tool_blocks, used_native = _resolve_tool_blocks(round_response, native_tool_calls, round_num, _mcp_name_mapping)
+ 
+         # Force-answer round: we told the model to STOP calling tools and
+         # answer. If it ignored that and emitted a (possibly DSML) tool

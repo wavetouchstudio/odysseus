@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 # These are the most commonly needed and should never be missing.
 ALWAYS_AVAILABLE = frozenset({
     "bash", "python", "web_search", "web_fetch",
+    "generate_image",  # Always available — image requests don't mention "generate_image" explicitly
     # File tools: read AND write/edit. An agent with disk access should always
     # be able to change files, not just read them — otherwise a bare "edit X"
     # request can miss write_file/edit_file (RAG-only) and the model wrongly

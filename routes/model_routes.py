@@ -1543,6 +1543,48 @@ def setup_model_routes(model_discovery):
 
         model_ids = _probe_endpoint(base_url, api_key.strip() or None, timeout=explicit_timeout) if should_probe else []
         ping = {"reachable": False, "error": None}
+        # For image-type endpoints also probe A1111/AUTOMATIC1111 format
+        _is_image_ep = (model_type or "llm").strip() == "image"
+        if should_probe and not model_ids and _is_image_ep:
+            _a1111_base = base_url.rstrip("/")
+            # Build auth — api_key in "user:password" format means Basic auth (A1111 --gradio-auth)
+            _a1111_key = api_key.strip()
+            _a1111_auth = None
+            if _a1111_key and ":" in _a1111_key:
+                _u, _p = _a1111_key.split(":", 1)
+                _a1111_auth = (_u, _p)
+            # Try A1111/SD WebUI endpoints in order of reliability
+            for _a1111_path, _is_model_list in [
+                ("/sdapi/v1/sd-models", True),
+                ("/sdapi/v1/samplers", False),
+                ("/sdapi/v1/options", False),
+            ]:
+                try:
+                    _a1111_r = httpx.get(_a1111_base + _a1111_path, auth=_a1111_auth, timeout=3)
+                    if _a1111_r.status_code == 200:
+                        if _is_model_list:
+                            _sd_models = _a1111_r.json()
+                            model_ids = [
+                                m.get("model_name") or m.get("title")
+                                for m in (_sd_models if isinstance(_sd_models, list) else [])
+                                if m.get("model_name") or m.get("title")
+                            ] or ["stable-diffusion"]
+                        else:
+                            model_ids = ["stable-diffusion"]
+                        ping = {"reachable": True, "error": None}
+                        break
+                except Exception:
+                    continue
+            # Last resort: any response from the root means the server is up —
+            # don't block registration just because we can't enumerate models
+            if not model_ids:
+                try:
+                    _root_r = httpx.get(_a1111_base + "/", auth=_a1111_auth, timeout=3)
+                    if _root_r.status_code < 500:
+                        model_ids = ["stable-diffusion"]
+                        ping = {"reachable": True, "error": None}
+                except Exception:
+                    pass
         if (should_probe or requested_kind in ("api", "proxy")) and not model_ids:
             ping = _ping_endpoint(base_url, api_key.strip() or None, timeout=min(explicit_timeout, 2.0))
         if require_model_list and not model_ids:

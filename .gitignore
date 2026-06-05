@@ -17,6 +17,7 @@ venv/
 
 # Data — all user data stays local
 data/
+!data/few_shot_examples.json
 !services/hwfit/data/
 !services/hwfit/data/hf_models.json
 logs/
