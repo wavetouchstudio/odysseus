@@ -91,7 +91,7 @@ SUBAGENT_HIERARCHY: List[Tuple[str, Optional[str]]] = [
     ("localhost:11434",               "hermes:8b"),            # fast warm calls, good format
     ("localhost:11434",               "gemma4:12b"),            # best reasoning, inconsistent speed
     ("localhost:11434",               "devstral-small-2:latest"),# slow but capable fallback
-    ("openrouter.ai",                 "gpt-oss-120b:free"),      # free tier cascade
+    ("openrouter.ai",                 "gpt-oss-120b"),           # free tier cascade
     ("generativelanguage.googleapis", None),
     ("api.mistral.ai",                None),
 ]
