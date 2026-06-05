@@ -69,6 +69,22 @@ _DEFAULT_AGENT_SYSTEM = (
     "Be concise and direct. Do not explain what you are doing — just do it."
 )
 
+# ── Per-model minimum timeouts ────────────────────────────────────────────────
+# Enforced regardless of what the caller requests. Substring match on model id.
+MODEL_MIN_TIMEOUTS: Dict[str, int] = {
+    "devstral-small": 600,
+}
+
+
+def _apply_model_timeout(model: str, requested: int) -> int:
+    """Return the effective timeout — at least the model's minimum if defined."""
+    name = (model or "").lower()
+    for key, min_t in MODEL_MIN_TIMEOUTS.items():
+        if key in name:
+            return max(requested, min_t)
+    return requested
+
+
 # ── Default model hierarchy ───────────────────────────────────────────────────
 SUBAGENT_HIERARCHY: List[Tuple[str, Optional[str]]] = [
     ("localhost:11434",               "gpt-oss:20b"),           # best content quality, high priority
@@ -228,15 +244,16 @@ async def subagent(req: Request, body: SubagentRequest):
     last_err: Optional[Exception] = None
     for url, model, headers in candidates:
         t0 = time.monotonic()
+        effective_timeout = _apply_model_timeout(model, body.timeout)
         try:
             if body.agent:
                 response = await _run_agent(url, model, messages, headers,
-                                            body.tools, body.timeout)
+                                            body.tools, effective_timeout)
             else:
                 response = await llm_call_async(
                     url, model, messages,
                     headers=headers,
-                    timeout=body.timeout,
+                    timeout=effective_timeout,
                     temperature=0.3,
                 )
             return {
