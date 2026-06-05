@@ -30,6 +30,7 @@ from pydantic import BaseModel
 from core.database import SessionLocal, ModelEndpoint
 from src.llm_core import llm_call_async
 from src.endpoint_resolver import build_chat_url, build_headers
+from src.model_context import get_context_length
 
 logger = logging.getLogger(__name__)
 
@@ -168,6 +169,7 @@ async def _run_agent(url: str, model: str, messages: list,
         max_rounds=6,
         owner=owner,
         relevant_tools=relevant,
+        context_length=get_context_length(url, model),
     ):
         if not chunk.startswith("data: "):
             continue
