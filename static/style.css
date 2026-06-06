@@ -34651,6 +34651,28 @@ body.research-panel-view #research-divider { display:none; }
 .research-controls-row {
   display:flex; align-items:center; gap:10px; margin-top:10px;
 }
+.research-probe-row {
+  display:flex; align-items:center; flex-direction:row; gap:0; min-width:0;
+  padding-top:6px; flex-basis:100%; flex-grow:1;
+}
+.rp-dot {
+  display:inline-block; width:8px; height:8px; border-radius:50%;
+  background:#555; vertical-align:middle; flex-shrink:0;
+  transition:background 0.3s;
+}
+.rp-dot.rp-checking { background:#888; animation:rp-pulse 0.8s infinite alternate; }
+.rp-dot.rp-ok { background:#4caf50; }
+.rp-dot.rp-fail { background:#f44336; }
+@keyframes rp-pulse { from { opacity:0.4; } to { opacity:1; } }
+.rp-probe-label {
+  font-size:11px; opacity:0.6; margin-left:5px; min-width:60px;
+}
+.rp-probe-btn {
+  background:none; border:none; cursor:pointer; font-size:14px;
+  opacity:0.45; padding:0 4px; vertical-align:middle; line-height:1; margin-left:2px;
+  color:var(--fg);
+}
+.rp-probe-btn:hover { opacity:1; }
 .research-start-btn {
   margin-left:auto;
   display:flex; align-items:center; gap:5px;

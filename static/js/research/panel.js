@@ -39,6 +39,7 @@ let _onDocKeydown = null;
 let _apiBase = '';
 let _endpoints = [];
 let _expandedJobId = null;
+let _probeTimer = null;
 let _markdownModule = null;
 let _sessionModule = null;
 let _settingsCollapsed = false;
@@ -382,6 +383,11 @@ function _buildPanelHTML() {
             <span class="research-setting-label">Model</span>
             <select id="research-model"><option value="">Default</option></select>
           </label>
+          <div class="research-setting research-probe-row">
+            <span id="research-probe-indicator" class="rp-dot" title=""></span>
+            <span id="research-probe-label" class="rp-probe-label"></span>
+            <button id="research-probe-btn" class="rp-probe-btn" title="Test connection">↻</button>
+          </div>
         </div>
         <div class="research-controls-row">
           <button id="research-add-btn" class="research-add-btn"><span class="research-add-plus">+</span> Queue</button>
@@ -422,6 +428,47 @@ function _resetCategoryToAuto() {
     b.classList.toggle('active', (b.dataset.cat || '') === ''));
 }
 
+async function _runProbe() {
+  const dot = document.getElementById('research-probe-indicator');
+  const label = document.getElementById('research-probe-label');
+  if (!dot) return;
+  const endpointId = document.getElementById('research-endpoint')?.value || '';
+  const model = document.getElementById('research-model')?.value || '';
+  dot.className = 'rp-dot rp-checking';
+  if (label) label.textContent = 'checking…';
+  dot.title = '';
+  try {
+    const res = await fetch(`${_apiBase}/api/research/probe`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({
+        endpoint_id: endpointId || undefined,
+        model: model || undefined,
+      }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      dot.className = 'rp-dot rp-ok';
+      if (label) label.textContent = `${data.latency_ms}ms`;
+      dot.title = `Connected — ${data.model || 'default model'}`;
+    } else {
+      dot.className = 'rp-dot rp-fail';
+      if (label) label.textContent = 'unreachable';
+      dot.title = data.error || 'Connection failed';
+    }
+  } catch {
+    dot.className = 'rp-dot rp-fail';
+    if (label) label.textContent = 'error';
+    dot.title = 'Request failed';
+  }
+}
+
+function _scheduleProbe() {
+  clearTimeout(_probeTimer);
+  _probeTimer = setTimeout(_runProbe, 800);
+}
+
 function _wireEvents(pane) {
   pane.querySelector('#research-panel-close').addEventListener('click', closePanel);
   pane.querySelector('#research-panel-minimize')?.addEventListener('click', () => {
@@ -459,7 +506,16 @@ function _wireEvents(pane) {
   });
 
   const endpointSelect = pane.querySelector('#research-endpoint');
-  endpointSelect.addEventListener('change', () => _populateModels(endpointSelect.value));
+  endpointSelect.addEventListener('change', () => {
+    _populateModels(endpointSelect.value);
+    _scheduleProbe();
+  });
+
+  const modelSelect = pane.querySelector('#research-model');
+  if (modelSelect) modelSelect.addEventListener('change', _scheduleProbe);
+
+  const probeBtn = pane.querySelector('#research-probe-btn');
+  if (probeBtn) probeBtn.addEventListener('click', _runProbe);
 
   _renderJobs();
 }
@@ -613,6 +669,7 @@ function _restoreSavedSettings() {
       }, 50);
     }
   }
+  _scheduleProbe();
 }
 
 async function _loadEndpoints() {

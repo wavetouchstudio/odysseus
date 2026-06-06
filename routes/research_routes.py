@@ -106,6 +106,60 @@ def setup_research_routes(research_handler, session_manager=None) -> APIRouter:
         except Exception:
             return False
 
+    class ProbeRequest(BaseModel):
+        endpoint_id: Optional[str] = None
+        model: Optional[str] = None
+
+    @router.post("/api/research/probe")
+    async def research_probe(body: ProbeRequest, request: Request):
+        """Check whether the configured LLM endpoint responds before starting research.
+        Returns {ok, latency_ms, model} on success or {ok:false, error} on failure."""
+        import time
+        from src.auth_helpers import require_privilege
+        user = require_privilege(request, "can_use_research")
+
+        if body.endpoint_id:
+            from src.database import SessionLocal
+            from src.endpoint_resolver import normalize_base, build_chat_url, build_headers
+            db = SessionLocal()
+            try:
+                ep = _owned_enabled_endpoint(db, user, body.endpoint_id)
+                if not ep:
+                    raise HTTPException(404, "Endpoint not found or disabled")
+                base = normalize_base(ep.base_url)
+                ep_url = build_chat_url(base)
+                ep_headers = build_headers(ep.api_key, base)
+                ep_model = body.model or ""
+                if not ep_model and ep.cached_models:
+                    try:
+                        models = json.loads(ep.cached_models)
+                        if models:
+                            ep_model = _first_chat_model(models)
+                    except Exception:
+                        pass
+            finally:
+                db.close()
+        else:
+            ep_url, ep_model, ep_headers = resolve_endpoint("research")
+            if not ep_url:
+                ep_url, ep_model, ep_headers = resolve_endpoint("utility")
+            if not ep_url:
+                ep_url, ep_model, ep_headers = resolve_endpoint("default")
+            if not ep_url:
+                ep_url, ep_model, ep_headers = resolve_endpoint("chat")
+            if not ep_url:
+                return {"ok": False, "error": "No endpoints configured"}
+            if body.model:
+                ep_model = body.model
+
+        t0 = time.monotonic()
+        try:
+            await research_handler._probe_endpoint(ep_url, ep_model, ep_headers)
+            latency_ms = round((time.monotonic() - t0) * 1000)
+            return {"ok": True, "latency_ms": latency_ms, "model": ep_model}
+        except Exception as e:
+            return {"ok": False, "error": str(e), "model": ep_model}
+
     @router.get("/api/research/active")
     async def research_active(request: Request):
         """List all currently active (running) research tasks."""
