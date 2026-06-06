@@ -1,0 +1,66 @@
+#!/usr/bin/env python3
+"""
+Odysseus subagent caller — reads prompt from stdin, config from args.
+
+Usage:
+  echo "Your prompt here" | python scripts/subagent --model gpt-oss:20b --agent --tools obsidian_append_content
+  cat prompt.txt | python scripts/subagent --model hermes3:8b
+
+Options:
+  --model MODEL       Model ID (default: auto)
+  --agent             Enable agent mode (MCP tools)
+  --tools T1 T2 ...   Tool short-names (requires --agent)
+  --timeout N         Seconds (default: 120)
+  --system TEXT       Override system prompt
+  --url URL           Base URL (default: http://localhost:7000)
+  --key KEY           X-Subagent-Key (default: $SUBAGENT_SECRET or empty)
+
+Prompt is always read from stdin so multi-line / special-char content
+is passed safely without any shell escaping.
+"""
+import json
+import os
+import sys
+import urllib.request
+import urllib.error
+import argparse
+
+
+def main():
+    parser = argparse.ArgumentParser(add_help=True)
+    parser.add_argument("--model",   default=None)
+    parser.add_argument("--agent",   action="store_true")
+    parser.add_argument("--tools",   nargs="*", default=[])
+    parser.add_argument("--timeout", type=int, default=120)
+    parser.add_argument("--system",  default=None)
+    parser.add_argument("--url",     default="http://localhost:7000")
+    parser.add_argument("--key",     default=os.environ.get("SUBAGENT_SECRET", ""))
+    args = parser.parse_args()
+
+    prompt = sys.stdin.read().strip()
+    if not prompt:
+        print("ERROR: no prompt on stdin", file=sys.stderr)
+        sys.exit(1)
+
+    payload = {"prompt": prompt, "timeout": args.timeout, "agent": args.agent, "tools": args.tools or []}
+    if args.model:
+        payload["model"] = args.model
+    if args.system:
+        payload["system"] = args.system
+
+    headers = {"Content-Type": "application/json"}
+    if args.key:
+        headers["X-Subagent-Key"] = args.key
+
+    body = json.dumps(payload).encode()
+    req = urllib.request.Request(f"{args.url}/api/subagent", body, headers, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=args.timeout + 15) as resp:
+            print(resp.read().decode())
+    except urllib.error.HTTPError as e:
+        print(f"HTTP {e.code}: {e.read().decode()}", file=sys.stderr)
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
