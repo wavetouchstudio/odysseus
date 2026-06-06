@@ -15,9 +15,11 @@ venv/
 .env.bak.*
 !.env.example
 
-# Data — all user data stays local
-data/
+# Data — all user data stays local, except shared config/knowledge
+data/*
 !data/few_shot_examples.json
+!data/skills/
+!data/memory.seed.json
 !services/hwfit/data/
 !services/hwfit/data/hf_models.json
 logs/

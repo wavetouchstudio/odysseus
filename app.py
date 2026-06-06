@@ -1026,8 +1026,35 @@ async def _startup_event():
             changed = skills_manager.backfill_owner(primary_owner, set(users.keys()))
             if changed:
                 logger.info("Assigned %s legacy skill file(s) to %s", changed, primary_owner)
+            # Claim any ownerless memory entries (e.g. seeded from memory.seed.json)
+            try:
+                memory_manager.claim_ownerless(primary_owner)
+            except Exception as _e:
+                logger.debug(f"Memory claim_ownerless skipped: {_e}")
     except Exception as e:
         logger.debug(f"Skill owner backfill skipped: {e}")
+
+    # Seed memory from memory.seed.json if memory.json is empty (first-run onboarding).
+    # Ownerless seed entries are claimed by the primary admin via claim_ownerless below.
+    try:
+        import json as _json
+        _mem_path = "data/memory.json"
+        _seed_path = "data/memory.seed.json"
+        import os as _os
+        if _os.path.exists(_seed_path):
+            _existing = []
+            if _os.path.exists(_mem_path):
+                with open(_mem_path, encoding="utf-8") as _f:
+                    _existing = _json.load(_f)
+            if not _existing:
+                with open(_seed_path, encoding="utf-8") as _f:
+                    _seed = _json.load(_f)
+                with open(_mem_path, "w", encoding="utf-8") as _f:
+                    _json.dump(_seed, _f, ensure_ascii=False, indent=2)
+                logger.info("Seeded memory.json from memory.seed.json (%d entries)", len(_seed))
+                # claim_ownerless runs below via memory_manager — no extra step needed
+    except Exception as e:
+        logger.debug(f"Memory seed skipped: {e}")
 
     # Start scheduled task runner — skip when running under a cron-driven
     # deployment where an external worker drives task firing. Mirrors

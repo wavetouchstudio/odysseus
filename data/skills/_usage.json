@@ -1,0 +1,42 @@
+{
+  "deadlyjrmint@gmail.com::create-and-read-files-in-obsidian-via-mcp": {
+    "uses": 35,
+    "last_used": 1780707768,
+    "audit_verdict": "inconclusive",
+    "audit_by_teacher": false,
+    "audit_worker_model": "deepseek-v4-pro:cloud",
+    "audited_at": 1780704307.0869124
+  },
+  "deadlyjrmint@gmail.com::append-tasks-to-a-markdown-file-in-obsidian": {
+    "uses": 31,
+    "last_used": 1780707768,
+    "audit_verdict": "inconclusive",
+    "audit_by_teacher": false,
+    "audit_worker_model": "deepseek-v4-pro:cloud",
+    "audited_at": 1780704307.719743
+  },
+  "deadlyjrmint@gmail.com::create-a-cube-actor-in-unreal-via-unreal-mcp": {
+    "uses": 47,
+    "last_used": 1780707768,
+    "audit_verdict": "inconclusive",
+    "audit_by_teacher": false,
+    "audit_worker_model": "deepseek-v4-pro:cloud",
+    "audited_at": 1780704308.3295598
+  },
+  "deadlyjrmint@gmail.com::execute-handoff-instructions-from-markdown-using-mcp": {
+    "uses": 0,
+    "last_used": null,
+    "audit_verdict": "inconclusive",
+    "audit_by_teacher": false,
+    "audit_worker_model": "deepseek-v4-pro:cloud",
+    "audited_at": 1780704306.3328435
+  },
+  "deadlyjrmint@gmail.com::resolve-obsidian-path-mismatches": {
+    "uses": 0,
+    "last_used": null,
+    "audit_verdict": "inconclusive",
+    "audit_by_teacher": false,
+    "audit_worker_model": "deepseek-v4-pro:cloud",
+    "audited_at": 1780704308.9503691
+  }
+}

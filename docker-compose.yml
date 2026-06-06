@@ -61,6 +61,7 @@ services:
       # Find yours with:  id -u  /  id -g
       - PUID=${PUID:-1000}
       - PGID=${PGID:-1000}
+      - SUBAGENT_SECRET=${SUBAGENT_SECRET:-}
     depends_on:
       searxng:
         condition: service_healthy
