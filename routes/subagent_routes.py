@@ -136,6 +136,17 @@ def _load_few_shot(tools: List[str]) -> List[Dict]:
 # ── Auth ─────────────────────────────────────────────────────────────────────
 _SECRET = os.getenv("SUBAGENT_SECRET", "")
 
+
+def _is_loopback(req: Request) -> bool:
+    """True for direct loopback connections — no proxy-forwarding headers."""
+    client = getattr(req, "client", None)
+    host = (client.host if client else "") or ""
+    if host not in ("127.0.0.1", "::1", "localhost"):
+        return False
+    _PROXY_HEADERS = ("x-forwarded-for", "x-forwarded-host", "x-real-ip",
+                      "cf-connecting-ip", "cf-ray", "forwarded")
+    return not any(req.headers.get(h) for h in _PROXY_HEADERS)
+
 _DEFAULT_AGENT_SYSTEM = (
     "Complete the task using the available tools. "
     "Be concise and direct. Do not explain what you are doing — just do it."
@@ -313,8 +324,12 @@ async def get_subagent_runs(req: Request):
 
 @router.post("/api/subagent")
 async def subagent(req: Request, body: SubagentRequest):
+    # Loopback callers (e.g. LLM agent using shell/curl) bypass the key check —
+    # the server binds to 127.0.0.1 by default so localhost is the trust boundary.
+    # External callers must still supply X-Subagent-Key when SUBAGENT_SECRET is set.
     if _SECRET and req.headers.get("X-Subagent-Key", "") != _SECRET:
-        raise HTTPException(401, "Missing or invalid X-Subagent-Key")
+        if not _is_loopback(req):
+            raise HTTPException(401, "Missing or invalid X-Subagent-Key")
 
     sys_content = body.system or (_DEFAULT_AGENT_SYSTEM if body.agent else None)
     messages = []
