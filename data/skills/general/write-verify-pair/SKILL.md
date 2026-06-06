@@ -1,7 +1,14 @@
 ---
+name: write-verify-pair
 title: Write-Verify Pair Pattern
 version: 1.1.0
-tags: pattern, verification, obsidian, file-writing, agent-workflow
+category: general
+tags: [pattern, verification, obsidian, file-writing, agent-workflow]
+status: active
+confidence: 0.95
+source: user
+owner: "deadlyjrmint@gmail.com"
+created: "2026-06-05T00:00:00Z"
 ---
 
 ## Problem

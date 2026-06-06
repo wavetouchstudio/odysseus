@@ -1127,6 +1127,7 @@ async def execute_tool_block(
         do_manage_contact,
         do_vault_search, do_vault_get, do_vault_unlock,
         do_app_api,
+        do_mcp_dispatch,
     )
 
     tool = block.tool_type
@@ -1309,6 +1310,9 @@ async def execute_tool_block(
     elif tool == "app_api":
         desc = "app_api"
         result = await do_app_api(content, owner=owner)
+    elif tool == "mcp_dispatch":
+        desc = f"mcp_dispatch: {content[:60]}"
+        result = await do_mcp_dispatch(content, owner=owner)
     elif tool == "list_serve_presets":
         desc = "list_serve_presets"
         result = await do_list_serve_presets(content, owner=owner)

@@ -927,6 +927,34 @@ FUNCTION_TOOL_SCHEMAS = [
     {
         "type": "function",
         "function": {
+            "name": "mcp_dispatch",
+            "description": "Execute an Obsidian or Unreal MCP operation using a one-line shorthand. Eliminates JSON payload construction — just pass the command string. Use instead of app_api for any Obsidian/Unreal task.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "command": {
+                        "type": "string",
+                        "description": (
+                            "Shorthand command. Format: [server] verb args\n"
+                            "  [obsidian] read <filepath>\n"
+                            "  [obsidian] append <filepath> | <content>\n"
+                            "  [obsidian] search <query>\n"
+                            "  [obsidian] list [<directory>]\n"
+                            "  [obsidian] listvault\n"
+                            "  [unreal] exec | <python_code>\n"
+                            "  [unreal] actors [<name_prefix>]\n"
+                            "Pipe | separates filepath from content. "
+                            "Everything right of | is the content string."
+                        ),
+                    }
+                },
+                "required": ["command"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "edit_image",
             "description": "Edit a gallery image: upscale, remove background, inpaint, or harmonize.",
             "parameters": {
@@ -1319,6 +1347,8 @@ def function_call_to_tool_block(name: str, arguments: str) -> Optional[ToolBlock
         content = json.dumps(args)
     elif tool_type == "ask_teacher":
         content = args.get("model", "auto") + "\n" + args.get("problem", "")
+    elif tool_type == "mcp_dispatch":
+        content = args.get("command", "")
     else:
         content = json.dumps(args)
 

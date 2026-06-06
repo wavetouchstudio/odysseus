@@ -2869,6 +2869,126 @@ async def do_app_api(content: str, owner: Optional[str] = None) -> Dict:
         return {"error": f"{method} {path} failed: {e}", "exit_code": 1}
 
 
+async def do_mcp_dispatch(content: str, owner: Optional[str] = None) -> Dict:
+    """Execute an Obsidian or Unreal MCP operation via shorthand command syntax.
+
+    Parses [server] verb args and routes to the correct subagent tool call,
+    eliminating the need for the model to construct JSON subagent payloads.
+
+    Supported commands:
+      [obsidian] read <filepath>
+      [obsidian] append <filepath> | <content>
+      [obsidian] search <query>
+      [obsidian] list [<directory>]
+      [obsidian] listvault
+      [unreal] exec | <python_code>
+      [unreal] actors [<name_prefix>]
+    """
+    import httpx, re
+
+    command = content.strip()
+    # If content is JSON (model passed {"command": "..."} directly), unwrap it.
+    if command.startswith("{"):
+        try:
+            command = json.loads(command).get("command", command)
+        except Exception:
+            pass
+    command = command.strip()
+
+    m = re.match(r"\[(\w+)\]\s+(\w+)\s*(.*)", command, re.DOTALL)
+    if not m:
+        available = (
+            "[obsidian] read <filepath>, [obsidian] append <filepath> | <content>, "
+            "[obsidian] search <query>, [obsidian] list [<dir>], [obsidian] listvault, "
+            "[unreal] exec | <code>, [unreal] actors [<prefix>]"
+        )
+        return {
+            "error": (
+                f"Cannot parse: {command!r}\n"
+                f"Expected: [server] verb args\nAvailable: {available}"
+            ),
+            "exit_code": 1,
+        }
+
+    server, verb = m.group(1).lower(), m.group(2).lower()
+    rest = m.group(3)
+    if "|" in rest:
+        left, right = rest.split("|", 1)
+        cmd_args = [left.strip(), right.strip()]
+    elif rest.strip():
+        cmd_args = [rest.strip()]
+    else:
+        cmd_args = []
+
+    _DISPATCH: Dict[tuple, tuple] = {
+        ("obsidian", "read"): (
+            "obsidian_get_file_contents",
+            lambda a: f'Call obsidian_get_file_contents with filepath="{a[0]}" and return the full file content.',
+        ),
+        ("obsidian", "append"): (
+            "obsidian_append_content",
+            lambda a: f"Call obsidian_append_content with filepath=\"{a[0]}\" and content={json.dumps(a[1])}",
+        ),
+        ("obsidian", "search"): (
+            "obsidian_simple_search",
+            lambda a: f'Call obsidian_simple_search with query="{a[0]}" and return all matching files and lines.',
+        ),
+        ("obsidian", "list"): (
+            "obsidian_list_files_in_dir",
+            lambda a: f'Call obsidian_list_files_in_dir with dirpath="{a[0] if a else ""}" and return all filenames.',
+        ),
+        ("obsidian", "listvault"): (
+            "obsidian_list_files_in_vault",
+            lambda a: "Call obsidian_list_files_in_vault and return all files and folders in the vault root.",
+        ),
+        ("unreal", "exec"): (
+            "execute_python_code",
+            lambda a: f"Call execute_python_code with code={json.dumps(a[0])}",
+        ),
+        ("unreal", "actors"): (
+            "get_actors_in_level",
+            lambda a: (
+                f'Call get_actors_in_level and return all actor names that start with "{a[0]}".'
+                if a else "Call get_actors_in_level and return all actor names."
+            ),
+        ),
+    }
+
+    key = (server, verb)
+    if key not in _DISPATCH:
+        available = ", ".join(f"[{s}] {v}" for s, v in sorted(_DISPATCH))
+        return {"error": f"Unknown: [{server}] {verb}\nAvailable: {available}", "exit_code": 1}
+
+    tool_name, prompt_fn = _DISPATCH[key]
+    try:
+        prompt = prompt_fn(cmd_args)
+    except IndexError:
+        return {"error": f"Missing argument for [{server}] {verb}", "exit_code": 1}
+
+    payload = {
+        "prompt": prompt,
+        "model": "gpt-oss:20b",
+        "agent": True,
+        "tools": [tool_name],
+        "timeout": 90,
+        "system": "You are a tool executor. Call the tool immediately with the exact arguments given. No reasoning, no explanation.",
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=120) as client:
+            resp = await client.post(
+                f"{_COOKBOOK_BASE}/api/subagent",
+                json=payload,
+                headers=_internal_headers(owner=owner),
+            )
+        if resp.status_code >= 400:
+            return {"error": f"Subagent HTTP {resp.status_code}: {resp.text[:400]}", "exit_code": 1}
+        data = resp.json()
+        return {"output": data.get("response") or str(data), "exit_code": 0}
+    except Exception as e:
+        return {"error": f"mcp_dispatch failed: {e}", "exit_code": 1}
+
+
 # Patterns for detecting running LLM/diffusion model servers outside
 # the cookbook's task tracker. Each entry: (label, substring-list).
 # Match is case-insensitive against the FULL cmdline. First-match wins.
