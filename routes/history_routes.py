@@ -666,6 +666,32 @@ def setup_history_routes(session_manager) -> APIRouter:
         except Exception:
             body = {}
         index_type = body.get("index_type", "deep")  # quick | standard | deep
+        requested_model = body.get("model") or None   # specific model override
+
+        def _resolve_llm():
+            """Return (url, model, headers) — use requested_model if given, else cascade."""
+            if requested_model:
+                from core.database import ModelEndpoint as _ME
+                _db = SessionLocal()
+                try:
+                    for ep in _db.query(_ME).filter(_ME.is_enabled == True).all():
+                        cached = json.loads(ep.cached_models or "[]")
+                        pinned = json.loads(ep.pinned_models or "[]")
+                        if requested_model in cached or requested_model in pinned:
+                            from src.endpoint_resolver import build_chat_url, build_headers
+                            return (
+                                build_chat_url(ep.base_url),
+                                requested_model,
+                                build_headers(ep.api_key or "", ep.base_url),
+                            )
+                finally:
+                    _db.close()
+            # Cascade: default → chat → utility
+            for role_key in ("default", "chat", "utility"):
+                u, m, h = resolve_endpoint(role_key, owner=owner)
+                if u and m:
+                    return u, m, h
+            return None, None, None
 
         def _extract_text(raw: str, char_limit: int) -> str:
             """Pull plain text from a message content field (string or JSON list)."""
@@ -743,11 +769,7 @@ def setup_history_routes(session_manager) -> APIRouter:
                 "Mark pinned sessions with 📌. Output only the markdown — no preamble.\n\n"
                 f"{raw_input}"
             )
-            url = model = headers = None
-            for role_key in ("default", "chat", "utility"):
-                url, model, headers = resolve_endpoint(role_key, owner=owner)
-                if url and model:
-                    break
+            url, model, headers = _resolve_llm()
             if not url:
                 raise HTTPException(503, "No LLM endpoint available")
             try:
@@ -826,11 +848,7 @@ def setup_history_routes(session_manager) -> APIRouter:
                 "Output only the markdown — no preamble.\n\n"
                 f"{raw_input}"
             )
-            url = model = headers = None
-            for role_key in ("default", "chat", "utility"):
-                url, model, headers = resolve_endpoint(role_key, owner=owner)
-                if url and model:
-                    break
+            url, model, headers = _resolve_llm()
             if not url:
                 raise HTTPException(503, "No LLM endpoint available")
             try:

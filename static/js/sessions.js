@@ -2788,7 +2788,7 @@ export function openLibrary(defaultTab) {
     _renderLibGrid();
   });
 
-  // Summarize all chats → editor document (3 index types)
+  // Summarize all chats → editor document (3 index types + model picker)
   const _sumBtn = document.getElementById('lib-summarize-btn');
   if (_sumBtn) {
     const _INDEX_TYPES = [
@@ -2797,15 +2797,17 @@ export function openLibrary(defaultTab) {
       { type: 'deep',     label: 'Deep Index',      desc: 'Multi-point sampling — full narrative arc' },
     ];
 
-    async function _runIndex(type) {
+    async function _runIndex(type, model) {
       _sumBtn.textContent = '…';
       _sumBtn.disabled = true;
       try {
+        const body = { index_type: type };
+        if (model) body.model = model;
         const res = await fetch(`${API_BASE}/api/sessions/summarize-to-doc`, {
           method: 'POST',
           credentials: 'same-origin',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ index_type: type }),
+          body: JSON.stringify(body),
         });
         if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.detail || `HTTP ${res.status}`); }
         const doc = await res.json();
@@ -2821,21 +2823,59 @@ export function openLibrary(defaultTab) {
       }
     }
 
-    _sumBtn.addEventListener('click', (e) => {
+    _sumBtn.addEventListener('click', async (e) => {
       e.stopPropagation();
-      // Remove any existing picker
       document.querySelectorAll('.lib-index-picker').forEach(p => p.remove());
 
       const picker = document.createElement('div');
-      picker.className = 'lib-index-picker dropdown';
-      picker.style.cssText = 'position:fixed;z-index:9999;background:var(--bg2,#1a1a1a);border:1px solid var(--border,#333);border-radius:6px;padding:4px 0;min-width:220px;box-shadow:0 4px 16px rgba(0,0,0,0.4);';
+      picker.className = 'lib-index-picker';
+      picker.style.cssText = 'position:fixed;z-index:9999;background:var(--bg2,#1a1a1a);border:1px solid var(--border,#333);border-radius:6px;padding:6px 0 4px;min-width:240px;box-shadow:0 4px 16px rgba(0,0,0,0.4);';
+
+      // Model selector row
+      const modelRow = document.createElement('div');
+      modelRow.style.cssText = 'padding:4px 12px 6px;border-bottom:1px solid var(--border,#333);margin-bottom:4px;';
+      const modelSel = document.createElement('select');
+      modelSel.style.cssText = 'width:100%;font-size:11px;background:var(--bg,#111);color:var(--fg,#eee);border:1px solid var(--border,#333);border-radius:4px;padding:3px 6px;';
+      const autoOpt = document.createElement('option');
+      autoOpt.value = '';
+      autoOpt.textContent = 'Auto (default → chat cascade)';
+      modelSel.appendChild(autoOpt);
+      modelRow.appendChild(modelSel);
+      picker.appendChild(modelRow);
+
+      // Load models asynchronously
+      fetch(`${API_BASE}/api/models`, { credentials: 'same-origin' })
+        .then(r => r.json())
+        .then(items => {
+          for (const ep of (items || [])) {
+            if (ep.model_type === 'image') continue;
+            const models = [...(ep.models || []), ...(ep.models_extra || [])];
+            for (const m of models) {
+              const opt = document.createElement('option');
+              opt.value = m;
+              const display = m.split('/').pop();
+              opt.textContent = ep.endpoint_name ? `${display}  (${ep.endpoint_name})` : display;
+              modelSel.appendChild(opt);
+            }
+          }
+        })
+        .catch(() => {});
+
+      modelSel.addEventListener('click', ev => ev.stopPropagation());
+      picker.appendChild(modelRow);
+
+      // Index type rows
       for (const opt of _INDEX_TYPES) {
         const item = document.createElement('div');
         item.style.cssText = 'padding:8px 14px;cursor:pointer;';
         item.innerHTML = `<div style="font-size:12px;font-weight:600">${opt.label}</div><div style="font-size:10px;opacity:0.5;margin-top:1px">${opt.desc}</div>`;
         item.addEventListener('mouseenter', () => { item.style.background = 'var(--hover,rgba(255,255,255,0.06))'; });
         item.addEventListener('mouseleave', () => { item.style.background = ''; });
-        item.addEventListener('click', (ev) => { ev.stopPropagation(); picker.remove(); _runIndex(opt.type); });
+        item.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          picker.remove();
+          _runIndex(opt.type, modelSel.value || null);
+        });
         picker.appendChild(item);
       }
 
