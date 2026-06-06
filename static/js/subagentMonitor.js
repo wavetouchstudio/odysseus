@@ -204,3 +204,5 @@ export function initSubagentMonitor() {
   const refreshBtn = document.getElementById('sa-refresh-btn');
   if (refreshBtn) refreshBtn.addEventListener('click', _refresh);
 }
+
+initSubagentMonitor();
