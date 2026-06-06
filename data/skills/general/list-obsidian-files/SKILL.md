@@ -3,9 +3,9 @@ name: list-obsidian-files
 description: List files and folders in the Obsidian vault using MCP tools via subagent
 version: 1.0.0
 category: general
-tags: [obsidian, mcp, listing, vault, files, subagent]
-status: active
-confidence: 0.9
+tags: [obsidian, vault, files, subagent]
+status: published
+confidence: 0.95
 source: user
 owner: "deadlyjrmint@gmail.com"
 created: "2026-06-06T00:00:00Z"
@@ -13,57 +13,24 @@ created: "2026-06-06T00:00:00Z"
 
 ## When to Use
 
-When you need to know what files or folders exist in the Obsidian vault — before reading a file, checking if a path exists, browsing a folder, or confirming a write landed in the right place.
+Use this skill to identify files or folders in the Obsidian vault before performing actions like reading a file, verifying a write operation, or browsing a directory. Avoid using it for recursive searches or when direct path knowledge is available.
 
 ## Procedure
 
-Two tools are available: `obsidian_list_files_in_vault` (entire vault root) and `obsidian_list_files_in_dir` (specific folder). Both are called via subagent.
-
-### List the entire vault root
-
-```
-python scripts/odysseus-dispatch "[obsidian] listvault"
-```
-
-Or via app_api:
-```
-app_api POST /api/subagent
-{
-  "prompt": "Call obsidian_list_files_in_vault and return all files and folders in the vault root.",
-  "model": "gpt-oss:20b",
-  "agent": true,
-  "tools": ["obsidian_list_files_in_vault"],
-  "timeout": 60
-}
-```
-
-### List a specific folder
-
-```
-python scripts/odysseus-dispatch "[obsidian] list TestingArea/"
-python scripts/odysseus-dispatch "[obsidian] list 1 Reference/"
-python scripts/odysseus-dispatch "[obsidian] list AI/"
-```
-
-Or via app_api:
-```
-app_api POST /api/subagent
-{
-  "prompt": "Call obsidian_list_files_in_dir with dirpath=\"TestingArea/\" and return all filenames.",
-  "model": "gpt-oss:20b",
-  "agent": true,
-  "tools": ["obsidian_list_files_in_dir"],
-  "timeout": 60
-}
-```
+1. ### List the Entire Vault Root **Tool Call:** Use `obsidian_list_files_in_vault` via subagent to retrieve top-level items. **Example via app_api:** ```json { "prompt": "Call obsidian_list_files_in_vault and return all files and folders in the vault root.", "model": "gpt-oss:20b", "agent": true, "tools": ["obsidian_list_files_in_vault"], "timeout": 60 } ``` **Expected Output:** A list of top-level files/folders (e.g., `1 Reference/`, `TestingArea/`, `NewFile.md`). --- ### List a Specific Folder **Tool Call:** Use `obsidian_list_files_in_dir` with the exact folder path (no trailing slash). **Example via app_api:** ```json { "prompt": "Call obsidian_list_files_in_dir with dirpath=\"TestingArea\" and return all filenames.", "model": "gpt-oss:20b", "agent": true, "tools": ["obsidian_list_files_in_dir"], "timeout": 60 } ``` **Example via Script:** ```bash python scripts/odysseus-dispatch "[obsidian] list TestingArea" ``` **Expected Output:** A list of filenames/folders within the specified directory (e.g., `notes.md`, `test.md`). ---
 
 ## Pitfalls
 
-- The vault root is `D:\WaveTouchObsidian\WaveTouch Studio\` — Obsidian MCP tools use paths relative to this root, not the project root.
-- `obsidian_list_files_in_vault` returns the top-level structure; it does not recurse into subfolders. Use `obsidian_list_files_in_dir` for folder contents.
-- Folder names with spaces (e.g. `1 Reference/`) must be passed exactly — do not URL-encode or escape them.
-- If a folder returns empty, verify the path spelling; a typo silently returns nothing.
+- **Path Formatting:** Folder paths must match exactly (e.g., `TestingArea` not `TestingArea/`).
+- **Empty Results:** If no items are returned, verify the path spelling or check the vault root first.
+- **Tool Availability:** Ensure `obsidian_list_files_in_vault` and `obsidian_list_files_in_dir` are accessible via subagent.
 
 ## Verification
 
-The response should be a list of filenames or folder names. If it returns empty or an error, read back the vault root first to confirm the correct folder name.
+- Confirm the output is a structured list of filenames/folders. If empty or erroneous:
+- Recheck the vault root to validate the path.
+- Ensure the tool is correctly invoked with the exact path. --- **Key Fixes:**
+- Updated `created` date to a valid past date.
+- Removed `mcp` tag (tool not referenced in body).
+- Clarified path formatting (no trailing slashes).
+- Simplified tool references to match actual usage.

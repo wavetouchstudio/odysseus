@@ -88,6 +88,12 @@ function _statusIcon(status) {
   return '<span class="sa-status-dot sa-failed" title="Failed">✗</span>';
 }
 
+function _originTime(run) {
+  if (!run.started_at) return '—';
+  const d = new Date(run.started_at * 1000);
+  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
 function _elapsed(run) {
   if (run.elapsed_s != null) return `${run.elapsed_s}s`;
   if (run.status === 'running') {
@@ -140,7 +146,7 @@ function _detailRow(run) {
 
   return `
     <tr class="sa-detail-row" id="sa-detail-${_esc(run.id)}">
-      <td colspan="5" style="padding:4px 12px 8px 28px;border-bottom:1px solid var(--border,#333)">
+      <td colspan="6" style="padding:4px 12px 8px 28px;border-bottom:1px solid var(--border,#333)">
         <div style="font-size:11px;opacity:0.5;margin-bottom:4px">Full prompt</div>
         <pre style="font-size:11px;white-space:pre-wrap;word-break:break-word;max-height:80px;overflow-y:auto;background:var(--bg2,#111);border-radius:4px;padding:6px;margin:0">${_esc(run.prompt)}</pre>
         ${toolTable}
@@ -163,7 +169,7 @@ function _render(runs) {
   }
 
   if (!runs.length) {
-    list.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:24px;opacity:0.4;font-size:12px">No runs yet</td></tr>';
+    list.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:24px;opacity:0.4;font-size:12px">No runs yet</td></tr>';
     return;
   }
 
@@ -175,6 +181,7 @@ function _render(runs) {
         <td style="padding:6px 8px;font-family:monospace;font-size:11px;white-space:nowrap;max-width:120px;overflow:hidden;text-overflow:ellipsis" title="${_esc(run.model)}">${_esc(run.model)}</td>
         <td style="padding:6px 8px;font-size:11px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${_esc(run.prompt)}">${_esc(run.prompt.slice(0, 80))}</td>
         <td style="padding:6px 8px;font-size:11px">${_toolChips(run.tool_calls)}</td>
+        <td style="padding:6px 8px;font-size:11px;white-space:nowrap;opacity:0.6">${_originTime(run)}</td>
         <td style="padding:6px 8px;font-size:11px;white-space:nowrap;opacity:0.6">${_elapsed(run)}</td>
       </tr>
       ${detail}

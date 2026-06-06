@@ -5,6 +5,14 @@
     "format": "{ tool_name: [ { user, assistant } ] }"
   },
 
+  "bash": [
+    {
+      "user": "POST JSON to http://localhost:7000/api/subagent using bash",
+      "assistant": "Use Python, not curl. Single quotes are literal in Windows shells — curl -d '{...}' sends the quote character as the first byte, making the body unparseable. Multiline curl with \\ also silently drops flags.\n\npython -c \"import json,urllib.request; payload=json.dumps({'prompt':'your prompt here','model':'gpt-oss:20b','agent':True,'tools':['obsidian_append_content'],'timeout':120}).encode(); req=urllib.request.Request('http://localhost:7000/api/subagent',payload,{'Content-Type':'application/json','X-Subagent-Key':'ody-sub-7f3k9x2mQpLvNwBt'}); print(urllib.request.urlopen(req,timeout=135).read().decode())\"",
+      "_source": "2026-06-06 — curl fails on Windows (single quotes literal, line continuation drops flags). Python urllib is the correct pattern."
+    }
+  ],
+
   "obsidian_append_content": [
     {
       "user": "Call obsidian_append_content with filepath=\"TestingArea/example.md\" and content=\"# Example\\n\\nThis is a test entry.\"",

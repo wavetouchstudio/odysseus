@@ -38,5 +38,114 @@
     "audit_by_teacher": false,
     "audit_worker_model": "deepseek-v4-pro:cloud",
     "audited_at": 1780704308.9503691
+  },
+  "deadlyjrmint@gmail.com::append-text-to-obsidian-note": {
+    "uses": 30,
+    "last_used": 1780774183,
+    "necessity": {
+      "necessary": true,
+      "redundant_with": [],
+      "reason": "It provides a specific procedure for appending text to an existing markdown file in an Obsidian vault."
+    },
+    "audit_verdict": "inconclusive",
+    "audit_by_teacher": false,
+    "audit_worker_model": "openai/gpt-3.5-turbo",
+    "audited_at": 1780741145.13823
+  },
+  "skill": {
+    "uses": 0,
+    "last_used": null,
+    "necessity": {
+      "necessary": true,
+      "redundant_with": [],
+      "reason": "Captures a specific and important pattern for ensuring successful writes in agent workflows"
+    },
+    "audit_verdict": "inconclusive",
+    "audit_by_teacher": false,
+    "audit_worker_model": "openai/gpt-3.5-turbo",
+    "audited_at": 1780736435.46326
+  },
+  "deadlyjrmint@gmail.com::skill": {
+    "uses": 0,
+    "last_used": null,
+    "necessity": {
+      "necessary": true,
+      "redundant_with": [],
+      "reason": "It provides a specific and important procedure for ensuring the success of write operations."
+    },
+    "audit_verdict": "inconclusive",
+    "audit_by_teacher": false,
+    "audit_worker_model": "openai/gpt-3.5-turbo",
+    "audited_at": 1780741126.0281453
+  },
+  "deadlyjrmint@gmail.com::list-files-in-relative-directory": {
+    "uses": 0,
+    "last_used": null,
+    "necessity": {
+      "necessary": true,
+      "redundant_with": [],
+      "reason": "The skill provides a specific procedure for resolving and listing files in a user-specified relative directory path when direct tool access fails."
+    },
+    "audit_verdict": "inconclusive",
+    "audit_by_teacher": false,
+    "audit_worker_model": "openai/gpt-3.5-turbo",
+    "audited_at": 1780741201.097293
+  },
+  "deadlyjrmint@gmail.com::list-obsidian-vault-files": {
+    "uses": 0,
+    "last_used": null,
+    "audit_verdict": "needs_work",
+    "audit_by_teacher": false,
+    "audit_worker_model": "gpt-oss:20b",
+    "audited_at": 1780772990.3028255
+  },
+  "deadlyjrmint@gmail.com::list-all-files-in-an-obsidian-vault": {
+    "uses": 8,
+    "last_used": 1780776597,
+    "necessity": {
+      "necessary": false,
+      "redundant_with": [],
+      "reason": "Duplicates existing Obsidian file\u2011listing skills with a generic shell command"
+    },
+    "audit_verdict": "skipped",
+    "audit_by_teacher": false,
+    "audit_worker_model": "openrouter/free",
+    "audited_at": 1780776866.7560706
+  },
+  "deadlyjrmint@gmail.com::write-verify-pair": {
+    "uses": 5,
+    "last_used": 1780776740,
+    "necessity": {
+      "necessary": true,
+      "redundant_with": [],
+      "reason": "Establishes a critical reliability pattern for tool-use verification that prevents silent failures, which is a non-obvious operational safeguard."
+    },
+    "audit_verdict": "inconclusive",
+    "audit_by_teacher": false,
+    "audit_worker_model": "openrouter/free",
+    "audited_at": 1780776484.278749
+  },
+  "deadlyjrmint@gmail.com::contact-subagent": {
+    "uses": 0,
+    "last_used": null,
+    "necessity": {
+      "necessary": true,
+      "redundant_with": [
+        "contact-subagent"
+      ],
+      "reason": "It enables efficient delegation without redundancy."
+    },
+    "audit_verdict": "inconclusive",
+    "audit_by_teacher": false,
+    "audit_worker_model": "openrouter/free",
+    "audited_at": 1780776581.1243382
+  },
+  "deadlyjrmint@gmail.com::list-obsidian-files": {
+    "uses": 0,
+    "last_used": null,
+    "audit_verdict": "pass",
+    "audit_by_teacher": false,
+    "audit_worker_model": "openrouter/free",
+    "audited_at": 1780776862.0548053
   }
 }
