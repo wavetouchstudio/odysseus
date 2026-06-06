@@ -240,6 +240,47 @@
     setTimeout(function(){var l=document.getElementById('app-loader');if(l){l.style.opacity='0';setTimeout(function(){l.remove()},300)}},5000);
   })();
   </script>
+  <!-- Subagent Monitor Modal -->
+  <div id="subagent-monitor-modal" class="modal hidden">
+    <div class="modal-content" role="dialog" aria-label="Agents" style="background:var(--bg);width:min(860px,96vw);max-height:80vh;display:flex;flex-direction:column;">
+      <div class="modal-header" style="display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--border,#2a2a2a);flex-shrink:0;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.6;flex-shrink:0;"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M2 12h3M19 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12"/></svg>
+        <span style="font-weight:600;font-size:13px;">Agent Monitor</span>
+        <span id="sa-running-badge-modal" style="display:none;font-size:9px;background:var(--accent,#4a9eff);color:#fff;border-radius:8px;padding:1px 6px;"></span>
+        <span style="flex:1"></span>
+        <button id="sa-refresh-btn" class="memory-toolbar-btn" title="Refresh now" style="font-size:11px;padding:2px 8px;">↻ Refresh</button>
+        <button class="close-btn" id="close-subagent-monitor" aria-label="Close agent monitor" style="margin-left:4px;">✖</button>
+      </div>
+      <div style="overflow-y:auto;flex:1;min-height:0;">
+        <table style="width:100%;border-collapse:collapse;font-size:12px;">
+          <thead style="position:sticky;top:0;background:var(--bg);z-index:1;">
+            <tr style="border-bottom:1px solid var(--border,#2a2a2a);">
+              <th style="padding:6px 8px;text-align:left;font-weight:600;opacity:0.5;width:28px;"></th>
+              <th style="padding:6px 8px;text-align:left;font-weight:600;opacity:0.5;">Model</th>
+              <th style="padding:6px 8px;text-align:left;font-weight:600;opacity:0.5;">Prompt</th>
+              <th style="padding:6px 8px;text-align:left;font-weight:600;opacity:0.5;">Tools</th>
+              <th style="padding:6px 8px;text-align:left;font-weight:600;opacity:0.5;">Time</th>
+            </tr>
+          </thead>
+          <tbody id="sa-runs-list">
+            <tr><td colspan="5" style="text-align:center;padding:24px;opacity:0.4;font-size:12px;">No runs yet</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <style>
+    .sa-status-dot { font-size:14px; }
+    .sa-running { color: var(--accent,#4a9eff); animation: sa-pulse 1s ease-in-out infinite; }
+    .sa-done    { color: #4caf50; }
+    .sa-failed  { color: var(--red,#f55); }
+    @keyframes sa-pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+    .sa-run-row:hover { background: var(--bg2,#1a1a1a); }
+    .sa-chip { display:inline-block;font-size:9px;padding:1px 5px;border-radius:8px;margin:1px 2px;white-space:nowrap; }
+    .sa-chip-done { background:rgba(76,175,80,0.15);color:#4caf50; }
+    .sa-chip-run  { background:rgba(74,158,255,0.15);color:var(--accent,#4a9eff); }
+  </style>
+
   <!-- Memory Management Modal -->
   <div id="memory-modal" class="modal hidden">
     <div class="modal-content memory-modal-content" role="dialog" aria-label="Brain" style="background:var(--bg)">
@@ -892,6 +933,15 @@
           </svg>
           <span class="grow">Tasks</span>
           <span id="assistant-notif-dot" class="sidebar-notif-dot" style="display:none"></span>
+        </div>
+
+        <div class="list-item" id="tool-subagent-btn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;opacity:0.5;">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M12 2v3M12 19v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M2 12h3M19 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12"/>
+          </svg>
+          <span class="grow">Agents</span>
+          <span id="sa-running-badge" style="display:none;font-size:9px;background:var(--accent,#4a9eff);color:#fff;border-radius:8px;padding:1px 5px;margin-right:6px;white-space:nowrap;"></span>
         </div>
 
         <div class="list-item" id="tool-theme-btn">
@@ -2266,6 +2316,10 @@
 <script type="module" src="/static/js/sessions.js"></script>
 <script type="module" src="/static/js/memory.js"></script>
 <script type="module" src="/static/js/skills.js"></script>
+<script type="module">
+  import { initSubagentMonitor } from '/static/js/subagentMonitor.js';
+  initSubagentMonitor();
+</script>
 <script type="module" src="/static/js/tourHints.js"></script>
 <script type="module" src="/static/js/tourAutoplay.js"></script>
 <script type="module" src="/static/js/fileHandler.js"></script>

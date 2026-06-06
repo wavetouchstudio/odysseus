@@ -21,6 +21,8 @@ import json
 import logging
 import os
 import time
+import uuid
+from collections import deque
 from pathlib import Path
 from typing import Optional, List, Tuple, Dict, Set
 
@@ -35,6 +37,34 @@ from src.model_context import get_context_length
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+# ── Run registry (in-memory, last 50 runs) ───────────────────────────────────
+_MAX_RUNS = 50
+_runs: Dict[str, dict] = {}
+_run_order: deque = deque()
+
+
+def _new_run(model: str, prompt: str, tools: List[str], agent: bool) -> Tuple[str, dict]:
+    run_id = uuid.uuid4().hex[:8]
+    run = {
+        "id": run_id,
+        "model": model or "auto",
+        "prompt": prompt[:300],
+        "tools": tools,
+        "agent": agent,
+        "status": "running",
+        "tool_calls": [],
+        "response": None,
+        "error": None,
+        "started_at": time.time(),
+        "elapsed_s": None,
+    }
+    _runs[run_id] = run
+    _run_order.append(run_id)
+    while len(_run_order) > _MAX_RUNS:
+        old = _run_order.popleft()
+        _runs.pop(old, None)
+    return run_id, run
 
 _FEW_SHOT_PATH = Path(__file__).parent.parent / "data" / "few_shot_examples.json"
 
@@ -170,7 +200,8 @@ def _get_admin_owner() -> Optional[str]:
 
 
 async def _run_agent(url: str, model: str, messages: list,
-                     headers: dict, tools: List[str], timeout: int) -> str:
+                     headers: dict, tools: List[str], timeout: int,
+                     run: Optional[dict] = None) -> str:
     """Run stream_agent_loop and collect the final text response."""
     from src.agent_loop import stream_agent_loop
 
@@ -195,6 +226,23 @@ async def _run_agent(url: str, model: str, messages: list,
         try:
             data = json.loads(raw)
             logger.info("[subagent-debug] event: %s", json.dumps(data)[:200])
+            etype = data.get("type")
+            if run is not None:
+                if etype == "tool_start":
+                    run["tool_calls"].append({
+                        "tool": data.get("tool", ""),
+                        "command": (data.get("command") or "")[:120],
+                        "status": "running",
+                        "output": None,
+                    })
+                elif etype == "tool_output":
+                    tool_name = data.get("tool", "")
+                    for tc in reversed(run["tool_calls"]):
+                        if tc["tool"] == tool_name and tc["status"] == "running":
+                            tc["status"] = "done"
+                            out = data.get("output") or ""
+                            tc["output"] = out[:400] if out else None
+                            break
             delta = data.get("delta", "")
             if delta:
                 chunks.append(delta)
@@ -212,6 +260,13 @@ class SubagentRequest(BaseModel):
     timeout: int = 120
     agent:   bool = False
     tools:   List[str] = []
+
+
+@router.get("/api/subagent/runs")
+async def get_subagent_runs(req: Request):
+    """Return the last N subagent runs, newest first."""
+    runs = [_runs[rid] for rid in reversed(list(_run_order)) if rid in _runs]
+    return {"runs": runs}
 
 
 @router.post("/api/subagent")
@@ -243,12 +298,13 @@ async def subagent(req: Request, body: SubagentRequest):
 
     last_err: Optional[Exception] = None
     for url, model, headers in candidates:
+        run_id, run = _new_run(model, body.prompt, body.tools, body.agent)
         t0 = time.monotonic()
         effective_timeout = _apply_model_timeout(model, body.timeout)
         try:
             if body.agent:
                 response = await _run_agent(url, model, messages, headers,
-                                            body.tools, effective_timeout)
+                                            body.tools, effective_timeout, run=run)
             else:
                 response = await llm_call_async(
                     url, model, messages,
@@ -256,14 +312,22 @@ async def subagent(req: Request, body: SubagentRequest):
                     timeout=effective_timeout,
                     temperature=0.3,
                 )
+            elapsed = round(time.monotonic() - t0, 2)
+            run["status"] = "done"
+            run["response"] = response[:800]
+            run["elapsed_s"] = elapsed
             return {
                 "response":  response,
                 "model":     model,
                 "endpoint":  url,
-                "elapsed_s": round(time.monotonic() - t0, 2),
+                "elapsed_s": elapsed,
                 "agent":     body.agent,
+                "run_id":    run_id,
             }
         except Exception as e:
+            run["status"] = "failed"
+            run["error"] = str(e)[:200]
+            run["elapsed_s"] = round(time.monotonic() - t0, 2)
             logger.warning("[subagent] %s @ %s failed: %s", model, url, e)
             last_err = e
 
