@@ -1,25 +1,23 @@
 ---
-title: Write-Verify Pair Pattern
+name: skill
 version: 1.1.0
-tags: pattern, verification, obsidian, file-writing, agent-workflow
+category: general
+tags: ["pattern, verification, obsidian, file-writing, agent-workflow"]
+status: draft
+confidence: 0.8
+source: learned
+owner: "deadlyjrmint@gmail.com"
+created: "2026-06-06T06:48:54Z"
 ---
 
-## Problem
-
 After writing to an external tool (Obsidian, file system, API), the write may silently fail, truncate, or land in the wrong location. Assuming success from the write tool's response alone is unreliable.
-
-## Rule
 
 Every write must be immediately paired with a read-back in the same agent loop.
 This applies to single operations and multi-step sequences.
 
-## Single Operation
-
 1. Call the write tool (e.g. obsidian_append_content)
 2. Call the read tool on the same target (e.g. obsidian_get_file_contents)
 3. Confirm content is present, non-empty, and structurally correct
-
-## Multi-Step Tasks
 
 When a task involves multiple writes, each write must be paired with its own immediate read — do NOT batch all writes and then read at the end.
 
@@ -28,8 +26,6 @@ CORRECT order:
 
 WRONG order:
   write1 -> write2 -> read1 -> read2
-
-## How to Prompt for This Pattern
 
 Always include both the write tool AND the read tool in the tools list.
 
@@ -48,8 +44,6 @@ calls — don't add a numeric constraint on top.
 Do NOT accept a bare "PASS" with no evidence. If the model doesn't include
 actual returned content in its response, it reasoned about the write rather
 than re-reading it.
-
-## Verification Checklist
 
 When reading back, confirm:
 - File exists and is non-empty
