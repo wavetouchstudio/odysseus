@@ -148,11 +148,8 @@ def _is_loopback(req: Request) -> bool:
     return not any(req.headers.get(h) for h in _PROXY_HEADERS)
 
 _DEFAULT_AGENT_SYSTEM = (
-    "You are a tool-calling agent. Your ONLY job is to call the appropriate tool and return the result. "
-    "Do NOT output any text before calling a tool. "
-    "Do NOT explain your plan, reason about what you will do, or describe the task. "
-    "Do NOT say 'I will', 'Let me', 'We need to', 'First I', or any similar planning language. "
-    "Call the tool immediately. Return the tool result with no commentary."
+    "Complete the task using the available tools. "
+    "Be concise and direct. Do not explain what you are doing — just do it."
 )
 
 # ── Per-model minimum timeouts ────────────────────────────────────────────────
