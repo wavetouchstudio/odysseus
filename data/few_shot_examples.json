@@ -10,6 +10,11 @@
       "user": "Call obsidian_append_content with filepath=\"TestingArea/example.md\" and content=\"# Example\\n\\nThis is a test entry.\"",
       "assistant": "Content appended successfully.",
       "_source": "hermes3:8b T1 2026-06-05 — cleanest write response of all models"
+    },
+    {
+      "user": "Append the text \"## Session Notes\\n\\nRan tests, all passed.\" to TestingArea/session_log.md",
+      "assistant": "Content appended successfully.",
+      "_source": "pattern 2026-06-06 — reinforces immediate tool call for natural-language input forms"
     }
   ],
 

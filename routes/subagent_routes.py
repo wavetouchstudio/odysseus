@@ -148,8 +148,11 @@ def _is_loopback(req: Request) -> bool:
     return not any(req.headers.get(h) for h in _PROXY_HEADERS)
 
 _DEFAULT_AGENT_SYSTEM = (
-    "Complete the task using the available tools. "
-    "Be concise and direct. Do not explain what you are doing — just do it."
+    "You are a tool-calling agent. Your ONLY job is to call the appropriate tool and return the result. "
+    "Do NOT output any text before calling a tool. "
+    "Do NOT explain your plan, reason about what you will do, or describe the task. "
+    "Do NOT say 'I will', 'Let me', 'We need to', 'First I', or any similar planning language. "
+    "Call the tool immediately. Return the tool result with no commentary."
 )
 
 # ── Per-model minimum timeouts ────────────────────────────────────────────────
@@ -323,13 +326,42 @@ async def get_subagent_runs(req: Request):
 
 
 @router.post("/api/subagent")
-async def subagent(req: Request, body: SubagentRequest):
+async def subagent(req: Request):
     # Loopback callers (e.g. LLM agent using shell/curl) bypass the key check —
     # the server binds to 127.0.0.1 by default so localhost is the trust boundary.
     # External callers must still supply X-Subagent-Key when SUBAGENT_SECRET is set.
     if _SECRET and req.headers.get("X-Subagent-Key", "") != _SECRET:
         if not _is_loopback(req):
             raise HTTPException(401, "Missing or invalid X-Subagent-Key")
+
+    # ── Parse body, unwrapping {"body": {...}} if the LLM added a spurious wrapper ──
+    # gpt-oss:20b misreads FastAPI's loc:["body"] validation error as meaning it
+    # needs to add a top-level "body" key. Accept both formats transparently.
+    try:
+        raw = await req.json()
+    except Exception as exc:
+        raise HTTPException(
+            400,
+            f"Could not parse request body as JSON: {exc}. "
+            'Expected: {"prompt": "...", "model": "...", ...}'
+        )
+    if not isinstance(raw, dict):
+        raise HTTPException(
+            400,
+            'Request body must be a JSON object. '
+            'Expected: {"prompt": "...", "model": "...", ...}'
+        )
+    if "body" in raw and "prompt" not in raw and isinstance(raw["body"], dict):
+        raw = raw["body"]
+    try:
+        body = SubagentRequest(**raw)
+    except Exception as exc:
+        raise HTTPException(
+            422,
+            f"Invalid subagent request: {exc}. "
+            "Required: prompt (str). "
+            "Optional: system, model, timeout (int), agent (bool), tools (list)."
+        )
 
     sys_content = body.system or (_DEFAULT_AGENT_SYSTEM if body.agent else None)
     messages = []
