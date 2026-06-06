@@ -38,18 +38,19 @@ class MemoryAddRequest(BaseModel):
     category: str = Field(default="fact", description="Memory category")
     source: str = Field(default="user", description="Memory source")
     session_id: Optional[str] = Field(default=None, description="Associated session ID")
+    pinned: bool = Field(default=False, description="Pin memory into every context")
 
     @field_validator('category')
     @classmethod
     def validate_category(cls, v):
-        if v not in ['fact', 'contact', 'task', 'preference', 'identity', 'project', 'goal']:
+        if v not in ['fact', 'contact', 'task', 'preference', 'identity', 'project', 'goal', 'instruction']:
             return 'fact'  # Default to 'fact' if invalid
         return v
 
 
 class MemoryUpdateRequest(BaseModel):
     text: str = Field(..., min_length=1, max_length=5000, description="Updated memory text")
-    category: Optional[str] = Field(default=None, pattern="^(fact|contact|task|preference|identity|project|goal)$", description="Memory category")
+    category: Optional[str] = Field(default=None, pattern="^(fact|contact|task|preference|identity|project|goal|instruction)$", description="Memory category")
 
 
 class PresetUpdateRequest(BaseModel):

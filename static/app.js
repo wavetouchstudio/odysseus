@@ -1533,8 +1533,10 @@ function initializeEventListeners() {
   
   const newMemoryInput = el('new-memory-input');
   if (newMemoryInput) {
-    newMemoryInput.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') {
+    // Ctrl+Enter submits; plain Enter inserts a newline (textarea behavior)
+    newMemoryInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
         memoryModule.addNewMemory();
       }
     });

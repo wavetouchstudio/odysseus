@@ -16,7 +16,7 @@ let selectMode = false;
 let selectedIds = new Set();
 
 
-const MEMORY_CATEGORIES = ['fact', 'identity', 'preference', 'contact', 'project', 'goal', 'task'];
+const MEMORY_CATEGORIES = ['fact', 'identity', 'preference', 'contact', 'project', 'goal', 'task', 'instruction'];
 
 let _memoryDragWired = false;
 function _wireMemoryDrag() {
@@ -67,14 +67,15 @@ function buildCategoryChips() {
   if (!memories.length) { container.innerHTML = ''; return; }
 
   const cats = new Set(memories.map(m => m.category || 'fact'));
-  const sorted = ['all', ...Array.from(cats).sort()];
+  const sorted = ['all', 'pinned', ...Array.from(cats).sort()];
 
   container.innerHTML = '';
   sorted.forEach(cat => {
     const btn = document.createElement('button');
     btn.className = 'memory-cat-chip' + (cat === activeCategory ? ' active' : '');
+    if (cat === 'pinned') btn.className += ' memory-cat-chip-pinned';
     btn.dataset.cat = cat;
-    btn.textContent = cat;
+    btn.textContent = cat === 'pinned' ? '📌 pinned' : cat;
     btn.addEventListener('click', () => {
       activeCategory = cat;
       container.querySelectorAll('.memory-cat-chip').forEach(b => b.classList.remove('active'));
@@ -552,7 +553,9 @@ function getFilteredMemories() {
     ? memories.filter(m => m.text && m.text.toLowerCase().includes(searchTerm))
     : [...memories];
 
-  if (activeCategory !== 'all') {
+  if (activeCategory === 'pinned') {
+    filtered = filtered.filter(m => m.pinned);
+  } else if (activeCategory !== 'all') {
     filtered = filtered.filter(m => (m.category || 'fact') === activeCategory);
   }
 
@@ -589,7 +592,7 @@ export function renderMemoryList() {
   if (filtered.length === 0) {
     const searchTerm = document.getElementById('memory-search')?.value?.trim() || '';
     const _smiley = '<span style="vertical-align:-3px;margin-left:6px;">' + uiModule.emptyStateIcon('smiley') + '</span>';
-    if (searchTerm || activeCategory !== 'all') {
+    if (searchTerm || activeCategory !== 'all' || activeCategory === 'pinned') {
       memoryList.innerHTML = `<div class="memory-empty">No matches.</div>`;
     } else {
       memoryList.innerHTML = `<div class="memory-empty" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;">
@@ -963,7 +966,9 @@ export function updateMemoryCount() {
   if (searchTerm) {
     visible = visible.filter(m => m.text && m.text.toLowerCase().includes(searchTerm));
   }
-  if (activeCategory !== 'all') {
+  if (activeCategory === 'pinned') {
+    visible = visible.filter(m => m.pinned);
+  } else if (activeCategory !== 'all') {
     visible = visible.filter(m => (m.category || 'fact') === activeCategory);
   }
 
@@ -983,21 +988,24 @@ export async function addNewMemory() {
     return;
   }
 
+  const catSelect = document.getElementById('new-memory-category');
+  const pinCheck = document.getElementById('new-memory-pin');
+  const category = catSelect ? catSelect.value : 'fact';
+  const pinned = pinCheck ? pinCheck.checked : false;
+
   try {
     const response = await fetch(`${window.location.origin}/api/memory/add`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        text: text,
-      })
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, category, pinned })
     });
 
     if (response.ok) {
       input.value = '';
+      if (catSelect) catSelect.value = 'fact';
+      if (pinCheck) pinCheck.checked = false;
       await loadMemories();
-      showToast('Memory added');
+      showToast(pinned ? 'Memory added & pinned' : 'Memory added');
     } else {
       const errorData = await response.json();
       console.error('Server error details:', errorData);

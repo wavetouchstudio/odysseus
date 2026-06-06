@@ -42,6 +42,48 @@ router = APIRouter()
 _MAX_RUNS = 50
 _runs: Dict[str, dict] = {}
 _run_order: deque = deque()
+_HISTORY_PATH = Path(__file__).parent.parent / "data" / "subagent_history.json"
+
+
+def _load_history() -> None:
+    """Populate _runs/_run_order from the persisted history file on startup."""
+    if not _HISTORY_PATH.exists():
+        return
+    try:
+        with open(_HISTORY_PATH, encoding="utf-8") as f:
+            saved: list = json.load(f)
+        for run in saved[-_MAX_RUNS:]:
+            rid = run.get("id")
+            if rid:
+                _runs[rid] = run
+                _run_order.append(rid)
+    except Exception as e:
+        logger.debug("subagent history load skipped: %s", e)
+
+
+def _persist_run(run: dict) -> None:
+    """Append / update a completed run in the history file."""
+    try:
+        _HISTORY_PATH.parent.mkdir(parents=True, exist_ok=True)
+        existing: list = []
+        if _HISTORY_PATH.exists():
+            with open(_HISTORY_PATH, encoding="utf-8") as f:
+                existing = json.load(f)
+        # Replace if same id, else append
+        ids = {r.get("id") for r in existing}
+        if run.get("id") in ids:
+            existing = [run if r.get("id") == run.get("id") else r for r in existing]
+        else:
+            existing.append(run)
+        # Keep only last _MAX_RUNS entries
+        existing = existing[-_MAX_RUNS:]
+        with open(_HISTORY_PATH, "w", encoding="utf-8") as f:
+            json.dump(existing, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        logger.debug("subagent history save skipped: %s", e)
+
+
+_load_history()
 
 
 def _new_run(model: str, prompt: str, tools: List[str], agent: bool) -> Tuple[str, dict]:
@@ -316,6 +358,7 @@ async def subagent(req: Request, body: SubagentRequest):
             run["status"] = "done"
             run["response"] = response[:800]
             run["elapsed_s"] = elapsed
+            _persist_run(run)
             return {
                 "response":  response,
                 "model":     model,
@@ -328,6 +371,7 @@ async def subagent(req: Request, body: SubagentRequest):
             run["status"] = "failed"
             run["error"] = str(e)[:200]
             run["elapsed_s"] = round(time.monotonic() - t0, 2)
+            _persist_run(run)
             logger.warning("[subagent] %s @ %s failed: %s", model, url, e)
             last_err = e
 

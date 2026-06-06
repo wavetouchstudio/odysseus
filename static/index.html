@@ -345,9 +345,27 @@
             </p>
             <div class="memory-add-row" style="margin-top:8px;">
               <div class="skill-ph-wrap" style="flex:1;min-width:0;">
-                <input type="text" id="new-memory-input" placeholder=" " class="memory-add-input skill-hint-input" aria-label="New memory text" />
-                <span class="skill-rich-ph"><span class="k">Add a memory</span> &mdash; e.g. 'I prefer concise replies' <svg class="k" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-left:4px;" aria-hidden="true"><polyline points="9 10 4 15 9 20"/><path d="M20 4v7a4 4 0 0 1-4 4H4"/></svg></span>
+                <textarea id="new-memory-input" placeholder=" " class="memory-add-input skill-hint-input" aria-label="New memory text" rows="3" style="resize:vertical;"></textarea>
+                <span class="skill-rich-ph skill-rich-ph-top"><span class="k">Add a memory</span> &mdash; e.g. 'I prefer concise replies'</span>
               </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;margin-top:8px;flex-wrap:wrap;">
+              <select id="new-memory-category" class="memory-sort-select" aria-label="Memory category" style="height:28px;font-size:12px;">
+                <option value="fact">fact</option>
+                <option value="identity">identity</option>
+                <option value="preference">preference</option>
+                <option value="contact">contact</option>
+                <option value="project">project</option>
+                <option value="goal">goal</option>
+                <option value="task">task</option>
+                <option value="instruction">instruction</option>
+              </select>
+              <label style="display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer;user-select:none;">
+                <input type="checkbox" id="new-memory-pin" style="cursor:pointer;" />
+                <span>Pin (always in context)</span>
+              </label>
+              <span style="flex:1"></span>
+              <button id="add-memory-btn" class="memory-toolbar-btn" style="height:28px;">Add Memory</button>
             </div>
           </div>
           <div class="admin-card">

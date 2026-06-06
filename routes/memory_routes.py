@@ -109,6 +109,8 @@ def setup_memory_routes(memory_manager: MemoryManager, session_manager: SessionM
         new_entry = memory_manager.add_entry(text, memory_data.source, memory_data.category, owner=user)
         if memory_data.session_id:
             new_entry["session_id"] = memory_data.session_id
+        if memory_data.pinned:
+            new_entry["pinned"] = True
         all_mem = memory_manager.load_all()
         all_mem.append(new_entry)
         memory_manager.save(all_mem)
