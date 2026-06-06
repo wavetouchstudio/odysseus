@@ -3,6 +3,7 @@
 
 import { makeWindowDraggable } from './windowDrag.js';
 import { snapModalToZone } from './tileManager.js';
+import documentModule from './document.js';
 
 const API = window.location.origin;
 const POLL_MS = 3000;
@@ -146,7 +147,7 @@ function _detailRow(run) {
 
   return `
     <tr class="sa-detail-row" id="sa-detail-${_esc(run.id)}">
-      <td colspan="6" style="padding:4px 12px 8px 28px;border-bottom:1px solid var(--border,#333)">
+      <td colspan="7" style="padding:4px 12px 8px 28px;border-bottom:1px solid var(--border,#333)">
         <div style="font-size:11px;opacity:0.5;margin-bottom:4px">Full prompt</div>
         <pre style="font-size:11px;white-space:pre-wrap;word-break:break-word;max-height:80px;overflow-y:auto;background:var(--bg2,#111);border-radius:4px;padding:6px;margin:0">${_esc(run.prompt)}</pre>
         ${toolTable}
@@ -169,12 +170,16 @@ function _render(runs) {
   }
 
   if (!runs.length) {
-    list.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:24px;opacity:0.4;font-size:12px">No runs yet</td></tr>';
+    list.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:24px;opacity:0.4;font-size:12px">No runs yet</td></tr>';
     return;
   }
 
   const rows = runs.map(run => {
     const detail = _expanded.has(run.id) ? _detailRow(run) : '';
+    const canFormat = run.status === 'done' || run.status === 'failed';
+    const fmtBtn = canFormat
+      ? `<button class="sa-fmt-btn" data-run-id="${_esc(run.id)}" title="Format to Editor" style="background:none;border:none;cursor:pointer;opacity:0.4;font-size:12px;padding:0 4px;line-height:1;" onclick="event.stopPropagation()">⬆</button>`
+      : '';
     return `
       <tr class="sa-run-row" data-run-id="${_esc(run.id)}" style="cursor:pointer;border-bottom:1px solid var(--border,#2a2a2a)">
         <td style="padding:6px 8px;white-space:nowrap">${_statusIcon(run.status)}</td>
@@ -183,6 +188,7 @@ function _render(runs) {
         <td style="padding:6px 8px;font-size:11px">${_toolChips(run.tool_calls)}</td>
         <td style="padding:6px 8px;font-size:11px;white-space:nowrap;opacity:0.6">${_originTime(run)}</td>
         <td style="padding:6px 8px;font-size:11px;white-space:nowrap;opacity:0.6">${_elapsed(run)}</td>
+        <td style="padding:4px 4px;white-space:nowrap">${fmtBtn}</td>
       </tr>
       ${detail}
     `;
@@ -195,6 +201,36 @@ function _render(runs) {
       if (_expanded.has(id)) _expanded.delete(id);
       else _expanded.add(id);
       _render(runs);
+    });
+  });
+
+  list.querySelectorAll('.sa-fmt-btn').forEach(btn => {
+    btn.addEventListener('mouseenter', () => { btn.style.opacity = '1'; });
+    btn.addEventListener('mouseleave', () => { btn.style.opacity = '0.4'; });
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const runId = btn.dataset.runId;
+      btn.textContent = '…';
+      btn.disabled = true;
+      try {
+        const res = await fetch(`${API}/api/subagent/runs/${runId}/format-to-doc`, {
+          method: 'POST',
+          credentials: 'same-origin',
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.detail || `HTTP ${res.status}`);
+        }
+        const doc = await res.json();
+        if (documentModule.injectFreshDoc) documentModule.injectFreshDoc(doc);
+        else await documentModule.loadDocument(doc.id);
+        if (!documentModule.isPanelOpen || !documentModule.isPanelOpen()) documentModule.openPanel();
+        btn.textContent = '✓';
+      } catch (err) {
+        console.error('Format to editor failed:', err);
+        btn.textContent = '✗';
+        btn.title = err.message;
+      }
     });
   });
 }

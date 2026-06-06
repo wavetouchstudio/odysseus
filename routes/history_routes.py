@@ -8,7 +8,7 @@ from typing import Dict, Any
 from fastapi import APIRouter, Request, HTTPException
 
 from core.models import ChatMessage
-from core.database import SessionLocal, ChatMessage as DbChatMessage, Session as DbSession
+from core.database import SessionLocal, ChatMessage as DbChatMessage, Session as DbSession, Document, DocumentVersion
 from src.topic_analyzer import analyze_topics
 from routes.session_routes import (
     _message_role,
@@ -651,6 +651,133 @@ def setup_history_routes(session_manager) -> APIRouter:
             logger.error(f"Manual compact error {session_id}: {e}")
             raise HTTPException(500, str(e))
 
+    @router.post("/api/sessions/summarize-to-doc")
+    async def summarize_all_sessions_to_doc(request: Request):
+        """Create a chat index document: one entry per session with topic hint from first message."""
+        from src.endpoint_resolver import resolve_endpoint
+        from src.llm_core import llm_call_async
+        from src.auth_helpers import get_current_user
+        owner = get_current_user(request)
+
+        # Collect session metadata + first user message for each
+        db = SessionLocal()
+        try:
+            q = db.query(DbSession).filter(DbSession.archived == False)
+            if owner:
+                q = q.filter(DbSession.owner == owner)
+            db_sessions = q.order_by(DbSession.updated_at.desc()).all()
+        finally:
+            db.close()
+
+        if not db_sessions:
+            raise HTTPException(400, "No sessions found")
+
+        # Grab first user message per session for topic context
+        entries = []
+        db = SessionLocal()
+        try:
+            for s in db_sessions:
+                first_msg = (
+                    db.query(DbChatMessage)
+                    .filter(DbChatMessage.session_id == s.id, DbChatMessage.role == "user")
+                    .order_by(DbChatMessage.timestamp)
+                    .first()
+                )
+                snippet = ""
+                if first_msg and first_msg.content:
+                    try:
+                        content = json.loads(first_msg.content) if first_msg.content.startswith("[") else first_msg.content
+                        if isinstance(content, list):
+                            snippet = " ".join(b.get("text", "") for b in content if isinstance(b, dict))
+                        else:
+                            snippet = str(content)
+                        snippet = snippet.strip()[:120]
+                    except Exception:
+                        snippet = str(first_msg.content)[:120]
+                entries.append({
+                    "name": s.name or "Untitled",
+                    "model": (s.model or "").split("/")[-1],
+                    "updated": (s.updated_at.strftime("%Y-%m-%d") if s.updated_at else ""),
+                    "pinned": bool(s.is_important),
+                    "snippet": snippet,
+                })
+        finally:
+            db.close()
+
+        # Build the input for the utility LLM
+        lines = []
+        for e in entries:
+            pin = " 📌" if e["pinned"] else ""
+            lines.append(f'- **{e["name"]}**{pin} ({e["model"]}, {e["updated"]})\n  "{e["snippet"]}"')
+        raw_list = "\n".join(lines)
+
+        url = model = headers = None
+        for role_key in ("utility", "default", "chat"):
+            url, model, headers = resolve_endpoint(role_key, owner=owner)
+            if url and model:
+                break
+        if not url:
+            raise HTTPException(503, "No LLM endpoint available")
+
+        prompt = (
+            "You are a document formatter. Turn the following list of AI chat sessions into a "
+            "clean, scannable markdown index document. Group related sessions under topic headings "
+            "where it makes sense. Keep each entry to one line. Preserve the session name exactly. "
+            "Mark pinned sessions with 📌. Output only the markdown — no preamble.\n\n"
+            f"{raw_list}"
+        )
+
+        try:
+            formatted = await llm_call_async(
+                url, model,
+                [{"role": "user", "content": prompt}],
+                temperature=0.2,
+                max_tokens=2048,
+                headers=headers,
+                timeout=60,
+            )
+        except Exception as e:
+            raise HTTPException(502, f"LLM formatting failed: {e}")
+
+        import datetime as _dt
+        today = _dt.date.today().isoformat()
+        doc_id = str(uuid.uuid4())
+        title = f"Chat Index — {today}"
+        db = SessionLocal()
+        try:
+            doc = Document(
+                id=doc_id,
+                title=title,
+                language="markdown",
+                current_content=formatted,
+                version_count=1,
+                is_active=True,
+                archived=False,
+                owner=owner,
+            )
+            db.add(doc)
+            ver = DocumentVersion(
+                id=str(uuid.uuid4()),
+                document_id=doc_id,
+                version_number=1,
+                content=formatted,
+            )
+            db.add(ver)
+            db.commit()
+            db.refresh(doc)
+            return {
+                "id": doc.id,
+                "title": doc.title,
+                "language": doc.language,
+                "current_content": doc.current_content,
+                "version_count": doc.version_count,
+                "is_active": doc.is_active,
+                "archived": doc.archived,
+                "session_id": None,
+            }
+        finally:
+            db.close()
+
     @router.post("/api/session/{session_id}/format-to-doc")
     async def format_session_to_doc(request: Request, session_id: str):
         """Format a conversation into a markdown document via the utility LLM."""
@@ -741,7 +868,6 @@ def setup_history_routes(session_manager) -> APIRouter:
             raise HTTPException(502, f"LLM formatting failed: {e}")
 
         # Create document
-        from core.database import Document, DocumentVersion
         doc_id = str(uuid.uuid4())
         title = f"{session_name} — formatted"
         db = SessionLocal()

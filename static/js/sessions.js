@@ -2672,6 +2672,7 @@ export function openLibrary(defaultTab) {
           </select>
           <input type="text" class="memory-search-input" id="lib-search" placeholder="Filter\u2026" style="flex:1;" />
           <button class="memory-toolbar-btn" id="lib-select-btn" title="Select">Select</button>
+          <button class="memory-toolbar-btn" id="lib-summarize-btn" title="Summarize all chats into one editor document" style="display:none;">⬆ Index</button>
         </div>
         <div class="memory-bulk-bar hidden" id="lib-bulk-bar">
           <label class="memory-bulk-check-all"><input type="checkbox" id="lib-select-all"> All</label>
@@ -2711,6 +2712,8 @@ export function openLibrary(defaultTab) {
       tab.classList.add('active');
       document.getElementById('lib-search').value = '';
       document.getElementById('lib-bulk-bar').classList.add('hidden');
+      const _sb = document.getElementById('lib-summarize-btn');
+      if (_sb) _sb.style.display = _lib.tab === 'chats' ? '' : 'none';
       // Update bulk action button label based on tab
       const action1 = document.getElementById('lib-bulk-action1');
       if (_lib.tab === 'archive') { action1.textContent = 'Restore'; }
@@ -2724,6 +2727,10 @@ export function openLibrary(defaultTab) {
   // Set initial bulk action label
   const _initAction = document.getElementById('lib-bulk-action1');
   if (_initAction) _initAction.textContent = _lib.tab === 'archive' ? 'Restore' : _lib.tab === 'documents' ? 'Export' : 'Archive';
+
+  // Show Summarize button only on Chats tab
+  const _libSumBtn = document.getElementById('lib-summarize-btn');
+  if (_libSumBtn) _libSumBtn.style.display = _lib.tab === 'chats' ? '' : 'none';
 
   document.getElementById('lib-sort').addEventListener('change', () => { _lib.sort = document.getElementById('lib-sort').value; _renderLibGrid(); });
   document.getElementById('lib-search').addEventListener('input', (e) => {
@@ -2781,6 +2788,29 @@ export function openLibrary(defaultTab) {
     _renderLibGrid();
   });
 
+  // Summarize all chats → editor document
+  const _sumBtn = document.getElementById('lib-summarize-btn');
+  if (_sumBtn) {
+    _sumBtn.addEventListener('click', async () => {
+      _sumBtn.textContent = '…';
+      _sumBtn.disabled = true;
+      try {
+        const res = await fetch(`${API_BASE}/api/sessions/summarize-to-doc`, { method: 'POST', credentials: 'same-origin' });
+        if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.detail || `HTTP ${res.status}`); }
+        const doc = await res.json();
+        closeLibrary();
+        if (documentModule.injectFreshDoc) documentModule.injectFreshDoc(doc);
+        else await documentModule.loadDocument(doc.id);
+        if (!documentModule.isPanelOpen || !documentModule.isPanelOpen()) documentModule.openPanel();
+        uiModule.showToast('Chat index created in editor');
+      } catch (err) {
+        uiModule.showError('Index failed: ' + err.message);
+        _sumBtn.textContent = '⬆ Index';
+        _sumBtn.disabled = false;
+      }
+    });
+  }
+
   _renderLibGrid();
 }
 
@@ -2830,6 +2860,19 @@ function _renderLibChats(grid) {
       e.stopPropagation();
       _showDropdown(e.currentTarget, [
         { label: 'Open', action: () => { closeLibrary(); selectSession(s.id); } },
+        { label: 'Format to Editor', action: async () => {
+          uiModule.showToast('Formatting conversation…', { duration: 90000 });
+          try {
+            const res = await fetch(`${API_BASE}/api/session/${s.id}/format-to-doc`, { method: 'POST', credentials: 'same-origin' });
+            if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.detail || `HTTP ${res.status}`); }
+            const doc = await res.json();
+            closeLibrary();
+            if (documentModule.injectFreshDoc) documentModule.injectFreshDoc(doc);
+            else await documentModule.loadDocument(doc.id);
+            if (!documentModule.isPanelOpen || !documentModule.isPanelOpen()) documentModule.openPanel();
+            uiModule.showToast('Conversation formatted and opened in editor');
+          } catch (err) { uiModule.showError('Format failed: ' + err.message); }
+        }},
         { label: 'Archive', action: async () => { await fetch(`${API_BASE}/api/session/${s.id}/archive`, { method: 'POST', headers: { 'Content-Type': 'application/json' } }); await loadSessions(); _renderLibGrid(); } },
         { label: 'Delete', action: async () => { if (!await uiModule.styledConfirm('Delete?', { confirmText: 'Delete', danger: true })) return; await fetch(`${API_BASE}/api/session/${s.id}`, { method: 'DELETE' }); await loadSessions(); _renderLibGrid(); }, danger: true },
       ]);

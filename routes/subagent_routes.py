@@ -422,5 +422,105 @@ async def subagent(req: Request):
     raise HTTPException(503, f"All subagent candidates failed. Last error: {last_err}")
 
 
+@router.post("/api/subagent/runs/{run_id}/format-to-doc")
+async def format_run_to_doc(run_id: str, req: Request):
+    """Format a subagent run's prompt/response into a markdown document via the utility LLM."""
+    run = _runs.get(run_id)
+    if not run:
+        raise HTTPException(404, f"Run '{run_id}' not found")
+
+    parts = [f"**Prompt**\n\n{run['prompt']}"]
+    if run.get("tool_calls"):
+        tool_lines = []
+        for tc in run["tool_calls"]:
+            line = f"- **{tc.get('tool', '?')}**"
+            if tc.get("command"):
+                line += f": `{tc['command'][:200]}`"
+            if tc.get("output"):
+                line += f"\n  → {tc['output'][:300]}"
+            tool_lines.append(line)
+        parts.append("**Tool Calls**\n\n" + "\n".join(tool_lines))
+    if run.get("response"):
+        parts.append(f"**Response**\n\n{run['response']}")
+    if run.get("error"):
+        parts.append(f"**Error**\n\n{run['error']}")
+
+    run_text = "\n\n---\n\n".join(parts)
+    model_label = run.get("model", "agent")
+    import datetime as _dt
+    ts = run.get("started_at")
+    date_str = _dt.datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M") if ts else ""
+
+    from src.endpoint_resolver import resolve_endpoint
+    from src.llm_core import llm_call_async
+
+    url = model = headers = None
+    for role_key in ("utility", "default", "chat"):
+        url, model, headers = resolve_endpoint(role_key)
+        if url and model:
+            break
+    if not url:
+        raise HTTPException(503, "No LLM endpoint available for formatting")
+
+    formatting_prompt = (
+        "You are a document formatter. Convert the following AI agent run into a "
+        "clean, well-structured markdown document suitable for reference. "
+        "Organise it with clear headings, preserve all important details and outputs, "
+        "and make it easy to scan. Output only the formatted markdown — no preamble.\n\n"
+        f"Model: {model_label} | Time: {date_str}\n\n{run_text}"
+    )
+
+    try:
+        formatted = await llm_call_async(
+            url, model,
+            [{"role": "user", "content": formatting_prompt}],
+            temperature=0.2,
+            max_tokens=2048,
+            headers=headers,
+            timeout=60,
+        )
+    except Exception as e:
+        raise HTTPException(502, f"LLM formatting failed: {e}")
+
+    from core.database import SessionLocal, Document, DocumentVersion
+    doc_id = str(uuid.uuid4())
+    title = f"Agent run {run_id} — {date_str or model_label}"
+    db = SessionLocal()
+    try:
+        doc = Document(
+            id=doc_id,
+            title=title,
+            language="markdown",
+            current_content=formatted,
+            version_count=1,
+            is_active=True,
+            archived=False,
+        )
+        db.add(doc)
+        ver = DocumentVersion(
+            id=str(uuid.uuid4()),
+            document_id=doc_id,
+            version_number=1,
+            content=formatted,
+        )
+        db.add(ver)
+        db.commit()
+        db.refresh(doc)
+        result = {
+            "id": doc.id,
+            "title": doc.title,
+            "language": doc.language,
+            "current_content": doc.current_content,
+            "version_count": doc.version_count,
+            "is_active": doc.is_active,
+            "archived": doc.archived,
+            "session_id": None,
+        }
+    finally:
+        db.close()
+
+    return result
+
+
 def setup_subagent_routes() -> APIRouter:
     return router
