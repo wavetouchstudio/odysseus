@@ -2788,14 +2788,25 @@ export function openLibrary(defaultTab) {
     _renderLibGrid();
   });
 
-  // Summarize all chats → editor document
+  // Summarize all chats → editor document (3 index types)
   const _sumBtn = document.getElementById('lib-summarize-btn');
   if (_sumBtn) {
-    _sumBtn.addEventListener('click', async () => {
+    const _INDEX_TYPES = [
+      { type: 'quick',    label: 'Quick Index',    desc: 'Name, date, message count — no LLM' },
+      { type: 'standard', label: 'Standard Index',  desc: 'First message per chat — one LLM call' },
+      { type: 'deep',     label: 'Deep Index',      desc: 'Multi-point sampling — full narrative arc' },
+    ];
+
+    async function _runIndex(type) {
       _sumBtn.textContent = '…';
       _sumBtn.disabled = true;
       try {
-        const res = await fetch(`${API_BASE}/api/sessions/summarize-to-doc`, { method: 'POST', credentials: 'same-origin' });
+        const res = await fetch(`${API_BASE}/api/sessions/summarize-to-doc`, {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ index_type: type }),
+        });
         if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.detail || `HTTP ${res.status}`); }
         const doc = await res.json();
         closeLibrary();
@@ -2808,6 +2819,33 @@ export function openLibrary(defaultTab) {
         _sumBtn.textContent = '⬆ Index';
         _sumBtn.disabled = false;
       }
+    }
+
+    _sumBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      // Remove any existing picker
+      document.querySelectorAll('.lib-index-picker').forEach(p => p.remove());
+
+      const picker = document.createElement('div');
+      picker.className = 'lib-index-picker dropdown';
+      picker.style.cssText = 'position:fixed;z-index:9999;background:var(--bg2,#1a1a1a);border:1px solid var(--border,#333);border-radius:6px;padding:4px 0;min-width:220px;box-shadow:0 4px 16px rgba(0,0,0,0.4);';
+      for (const opt of _INDEX_TYPES) {
+        const item = document.createElement('div');
+        item.style.cssText = 'padding:8px 14px;cursor:pointer;';
+        item.innerHTML = `<div style="font-size:12px;font-weight:600">${opt.label}</div><div style="font-size:10px;opacity:0.5;margin-top:1px">${opt.desc}</div>`;
+        item.addEventListener('mouseenter', () => { item.style.background = 'var(--hover,rgba(255,255,255,0.06))'; });
+        item.addEventListener('mouseleave', () => { item.style.background = ''; });
+        item.addEventListener('click', (ev) => { ev.stopPropagation(); picker.remove(); _runIndex(opt.type); });
+        picker.appendChild(item);
+      }
+
+      const rect = _sumBtn.getBoundingClientRect();
+      picker.style.left = rect.left + 'px';
+      picker.style.top = (rect.bottom + 4) + 'px';
+      document.body.appendChild(picker);
+
+      const _closePicker = (ev) => { if (!picker.contains(ev.target)) { picker.remove(); document.removeEventListener('click', _closePicker); } };
+      setTimeout(() => document.addEventListener('click', _closePicker), 0);
     });
   }
 

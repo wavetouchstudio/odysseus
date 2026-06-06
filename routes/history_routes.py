@@ -653,13 +653,19 @@ def setup_history_routes(session_manager) -> APIRouter:
 
     @router.post("/api/sessions/summarize-to-doc")
     async def summarize_all_sessions_to_doc(request: Request):
-        """Create a chat index document using multi-point message sampling per session."""
+        """Create a chat index document. index_type: quick | standard | deep."""
         from src.endpoint_resolver import resolve_endpoint
         from src.llm_core import llm_call_async
         from src.auth_helpers import get_current_user
         import math
+        import datetime as _dt
 
         owner = get_current_user(request)
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+        index_type = body.get("index_type", "deep")  # quick | standard | deep
 
         def _extract_text(raw: str, char_limit: int) -> str:
             """Pull plain text from a message content field (string or JSON list)."""
@@ -692,105 +698,152 @@ def setup_history_routes(session_manager) -> APIRouter:
         if not db_sessions:
             raise HTTPException(400, "No sessions found")
 
-        # For each session, sample messages from multiple points
-        entries = []
-        db = SessionLocal()
-        try:
+        # ── Quick: metadata only, no LLM ─────────────────────────────────────
+        if index_type == "quick":
+            today = _dt.date.today().isoformat()
+            lines = [f"# Chat Index — {today}\n"]
             for s in db_sessions:
-                msgs = (
-                    db.query(DbChatMessage)
-                    .filter(
-                        DbChatMessage.session_id == s.id,
-                        DbChatMessage.role.in_(["user", "assistant"]),
+                pin = " 📌" if s.is_important else ""
+                model_label = (s.model or "").split("/")[-1]
+                updated = s.updated_at.strftime("%Y-%m-%d") if s.updated_at else ""
+                lines.append(f"- **{s.name or 'Untitled'}**{pin}  ({model_label}, {updated})")
+            formatted = "\n".join(lines)
+
+        # ── Standard: first user message per session ──────────────────────────
+        elif index_type == "standard":
+            entries = []
+            db = SessionLocal()
+            try:
+                for s in db_sessions:
+                    first_msg = (
+                        db.query(DbChatMessage)
+                        .filter(DbChatMessage.session_id == s.id, DbChatMessage.role == "user")
+                        .order_by(DbChatMessage.timestamp)
+                        .first()
                     )
-                    .order_by(DbChatMessage.timestamp)
-                    .all()
-                )
+                    snippet = _extract_text(first_msg.content or "", 150) if first_msg else ""
+                    entries.append({
+                        "name": s.name or "Untitled",
+                        "model": (s.model or "").split("/")[-1],
+                        "updated": s.updated_at.strftime("%Y-%m-%d") if s.updated_at else "",
+                        "pinned": bool(s.is_important),
+                        "snippet": snippet,
+                    })
+            finally:
+                db.close()
 
-                total = len(msgs)
-                if total == 0:
-                    chunks = []
-                elif total <= 6:
-                    # Short: take everything
-                    target_indices = list(range(total))
-                    # Per-chunk char limit is generous since there are few
-                    chunks = [_extract_text(msgs[i].content or "", 300) for i in target_indices]
-                else:
-                    # Sample up to 5 points; more messages → tighter excerpts
-                    n_samples = min(5, max(3, math.ceil(total / 8)))
-                    char_per_chunk = max(80, 400 // n_samples)
-                    target_indices = _sample_indices(total, n_samples)
-                    chunks = [_extract_text(msgs[i].content or "", char_per_chunk) for i in target_indices]
-
-                # Label chunks with position hint
-                labelled = []
-                _indices = target_indices if total > 0 else []
-                for idx, (msg_idx, text) in enumerate(zip(_indices, chunks)):
-                    if not text:
-                        continue
-                    role = msgs[msg_idx].role if total > 0 else "user"
-                    position = "start" if msg_idx == 0 else ("end" if msg_idx == total - 1 else "mid")
-                    labelled.append(f"[{position}/{role}] {text}")
-
-                entries.append({
-                    "name": s.name or "Untitled",
-                    "model": (s.model or "").split("/")[-1],
-                    "updated": (s.updated_at.strftime("%Y-%m-%d") if s.updated_at else ""),
-                    "pinned": bool(s.is_important),
-                    "chunks": labelled,
-                    "msg_count": total,
-                })
-        finally:
-            db.close()
-
-        # Build prompt — one block per session with sampled chunks
-        session_blocks = []
-        for e in entries:
-            pin = " 📌" if e["pinned"] else ""
-            header = f"### {e['name']}{pin}  ({e['model']}, {e['updated']}, {e['msg_count']} msgs)"
-            body = "\n".join(f"  > {c}" for c in e["chunks"]) if e["chunks"] else "  > (no messages)"
-            session_blocks.append(f"{header}\n{body}")
-        raw_input = "\n\n".join(session_blocks)
-
-        url = model = headers = None
-        for role_key in ("utility", "default", "chat"):
-            url, model, headers = resolve_endpoint(role_key, owner=owner)
-            if url and model:
-                break
-        if not url:
-            raise HTTPException(503, "No LLM endpoint available")
-
-        prompt = (
-            "You are a document formatter. Below are AI chat sessions with sampled excerpts "
-            "from multiple points in each conversation ([start/mid/end] with speaker role). "
-            "Use these excerpts to understand what each conversation was actually about — "
-            "not just how it started, but how it developed and concluded.\n\n"
-            "Write a clean markdown index document that:\n"
-            "- Groups related sessions under topic headings\n"
-            "- Gives each session a one-line summary capturing its narrative arc\n"
-            "- Preserves the session name exactly\n"
-            "- Marks pinned sessions with 📌\n"
-            "- Notes message count in parentheses\n\n"
-            "Output only the markdown — no preamble.\n\n"
-            f"{raw_input}"
-        )
-
-        try:
-            formatted = await llm_call_async(
-                url, model,
-                [{"role": "user", "content": prompt}],
-                temperature=0.2,
-                max_tokens=2048,
-                headers=headers,
-                timeout=60,
+            raw_input = "\n".join(
+                f'- **{e["name"]}**{"  📌" if e["pinned"] else ""}  ({e["model"]}, {e["updated"]})\n  "{e["snippet"]}"'
+                for e in entries
             )
-        except Exception as e:
-            raise HTTPException(502, f"LLM formatting failed: {e}")
+            prompt = (
+                "You are a document formatter. Turn the following list of AI chat sessions into a "
+                "clean, scannable markdown index. Group related sessions under topic headings where "
+                "it makes sense. One line per session. Preserve the session name exactly. "
+                "Mark pinned sessions with 📌. Output only the markdown — no preamble.\n\n"
+                f"{raw_input}"
+            )
+            url = model = headers = None
+            for role_key in ("default", "chat", "utility"):
+                url, model, headers = resolve_endpoint(role_key, owner=owner)
+                if url and model:
+                    break
+            if not url:
+                raise HTTPException(503, "No LLM endpoint available")
+            try:
+                formatted = await llm_call_async(
+                    url, model, [{"role": "user", "content": prompt}],
+                    temperature=0.2, max_tokens=2048, headers=headers, timeout=90,
+                )
+            except Exception as e:
+                raise HTTPException(502, f"LLM formatting failed: {e}")
 
-        import datetime as _dt
+        # ── Deep: multi-point sampling ────────────────────────────────────────
+        else:
+            entries = []
+            db = SessionLocal()
+            try:
+                for s in db_sessions:
+                    msgs = (
+                        db.query(DbChatMessage)
+                        .filter(
+                            DbChatMessage.session_id == s.id,
+                            DbChatMessage.role.in_(["user", "assistant"]),
+                        )
+                        .order_by(DbChatMessage.timestamp)
+                        .all()
+                    )
+                    total = len(msgs)
+                    if total == 0:
+                        chunks, _indices = [], []
+                    elif total <= 6:
+                        _indices = list(range(total))
+                        chunks = [_extract_text(msgs[i].content or "", 300) for i in _indices]
+                    else:
+                        n_samples = min(5, max(3, math.ceil(total / 8)))
+                        char_per_chunk = max(80, 400 // n_samples)
+                        _indices = _sample_indices(total, n_samples)
+                        chunks = [_extract_text(msgs[i].content or "", char_per_chunk) for i in _indices]
+
+                    labelled = []
+                    for msg_idx, text in zip(_indices, chunks):
+                        if not text:
+                            continue
+                        role = msgs[msg_idx].role
+                        position = "start" if msg_idx == 0 else ("end" if msg_idx == total - 1 else "mid")
+                        labelled.append(f"[{position}/{role}] {text}")
+
+                    entries.append({
+                        "name": s.name or "Untitled",
+                        "model": (s.model or "").split("/")[-1],
+                        "updated": s.updated_at.strftime("%Y-%m-%d") if s.updated_at else "",
+                        "pinned": bool(s.is_important),
+                        "chunks": labelled,
+                        "msg_count": total,
+                    })
+            finally:
+                db.close()
+
+            session_blocks = []
+            for e in entries:
+                pin = " 📌" if e["pinned"] else ""
+                header = f"### {e['name']}{pin}  ({e['model']}, {e['updated']}, {e['msg_count']} msgs)"
+                body = "\n".join(f"  > {c}" for c in e["chunks"]) if e["chunks"] else "  > (no messages)"
+                session_blocks.append(f"{header}\n{body}")
+            raw_input = "\n\n".join(session_blocks)
+
+            prompt = (
+                "You are a document formatter. Below are AI chat sessions with sampled excerpts "
+                "from multiple points in each conversation ([start/mid/end] with speaker role). "
+                "Use these excerpts to understand what each conversation was actually about — "
+                "not just how it started, but how it developed and concluded.\n\n"
+                "Write a clean markdown index document that:\n"
+                "- Groups related sessions under topic headings\n"
+                "- Gives each session a one-line summary capturing its narrative arc\n"
+                "- Preserves the session name exactly\n"
+                "- Marks pinned sessions with 📌\n"
+                "- Notes message count in parentheses\n\n"
+                "Output only the markdown — no preamble.\n\n"
+                f"{raw_input}"
+            )
+            url = model = headers = None
+            for role_key in ("default", "chat", "utility"):
+                url, model, headers = resolve_endpoint(role_key, owner=owner)
+                if url and model:
+                    break
+            if not url:
+                raise HTTPException(503, "No LLM endpoint available")
+            try:
+                formatted = await llm_call_async(
+                    url, model, [{"role": "user", "content": prompt}],
+                    temperature=0.2, max_tokens=2048, headers=headers, timeout=120,
+                )
+            except Exception as e:
+                raise HTTPException(502, f"LLM formatting failed: {e}")
+
         today = _dt.date.today().isoformat()
         doc_id = str(uuid.uuid4())
-        title = f"Chat Index — {today}"
+        title = f"Chat Index ({index_type}) — {today}"
         db = SessionLocal()
         try:
             doc = Document(
