@@ -651,4 +651,135 @@ def setup_history_routes(session_manager) -> APIRouter:
             logger.error(f"Manual compact error {session_id}: {e}")
             raise HTTPException(500, str(e))
 
+    @router.post("/api/session/{session_id}/format-to-doc")
+    async def format_session_to_doc(request: Request, session_id: str):
+        """Format a conversation into a markdown document via the utility LLM."""
+        _verify_session_owner(request, session_id)
+
+        # Fetch history
+        try:
+            session = session_manager.get_session(session_id)
+        except KeyError:
+            raise HTTPException(404, f"Session '{session_id}' not found")
+
+        history = [
+            m for m in session.history
+            if not (getattr(m, "metadata", None) or {}).get("hidden")
+            and (getattr(m, "role", None) or m.get("role", "")) in ("user", "assistant")
+        ] if session.history else []
+
+        # DB fallback
+        if not history:
+            db = SessionLocal()
+            try:
+                rows = (
+                    db.query(DbChatMessage)
+                    .filter(DbChatMessage.session_id == session_id)
+                    .order_by(DbChatMessage.timestamp)
+                    .all()
+                )
+                history = [
+                    {"role": r.role, "content": r.content}
+                    for r in rows
+                    if r.role in ("user", "assistant")
+                ]
+            finally:
+                db.close()
+
+        if not history:
+            raise HTTPException(400, "No messages to format")
+
+        # Build conversation text
+        lines = []
+        for m in history:
+            role = getattr(m, "role", None) or m.get("role", "")
+            content = getattr(m, "content", None) or m.get("content", "")
+            if isinstance(content, list):
+                content = " ".join(
+                    b.get("text", "") for b in content if isinstance(b, dict)
+                )
+            label = "**You**" if role == "user" else "**Assistant**"
+            lines.append(f"{label}\n\n{content.strip()}")
+        conversation_text = "\n\n---\n\n".join(lines)
+
+        session_name = getattr(session, "name", None) or session_id[:8]
+
+        # Resolve utility → default → chat endpoint
+        from src.endpoint_resolver import resolve_endpoint
+        from src.llm_core import llm_call_async
+        from src.auth_helpers import get_current_user
+
+        owner = get_current_user(request)
+        url = model = headers = None
+        for role_key in ("utility", "default", "chat"):
+            url, model, headers = resolve_endpoint(role_key, owner=owner)
+            if url and model:
+                break
+        if not url:
+            raise HTTPException(503, "No LLM endpoint available for formatting")
+
+        formatting_prompt = (
+            "You are a document formatter. Convert the following chat conversation "
+            "into a clean, well-structured markdown document. "
+            "Use headings to organize topics, preserve important details, "
+            "remove filler/pleasantries, and make it easy to reference later. "
+            "Output only the formatted markdown — no preamble or meta-commentary."
+            f"\n\nConversation title: {session_name}"
+            f"\n\n{conversation_text}"
+        )
+
+        try:
+            formatted = await llm_call_async(
+                url, model,
+                [{"role": "user", "content": formatting_prompt}],
+                temperature=0.2,
+                max_tokens=4096,
+                headers=headers,
+                timeout=90,
+            )
+        except Exception as e:
+            raise HTTPException(502, f"LLM formatting failed: {e}")
+
+        # Create document
+        from core.database import Document, DocumentVersion
+        doc_id = str(uuid.uuid4())
+        title = f"{session_name} — formatted"
+        db = SessionLocal()
+        try:
+            doc = Document(
+                id=doc_id,
+                session_id=session_id,
+                title=title,
+                language="markdown",
+                current_content=formatted,
+                version_count=1,
+                is_active=True,
+                archived=False,
+                owner=owner,
+            )
+            db.add(doc)
+            ver = DocumentVersion(
+                id=str(uuid.uuid4()),
+                document_id=doc_id,
+                version_number=1,
+                content=formatted,
+            )
+            db.add(ver)
+            db.commit()
+            db.refresh(doc)
+            result = {
+                "id": doc.id,
+                "session_id": doc.session_id,
+                "title": doc.title,
+                "language": doc.language,
+                "current_content": doc.current_content,
+                "version_count": doc.version_count,
+                "is_active": doc.is_active,
+                "archived": doc.archived,
+            }
+        finally:
+            db.close()
+
+        return result
+
     return router

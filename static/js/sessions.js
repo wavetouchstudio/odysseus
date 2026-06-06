@@ -9,6 +9,7 @@ import { providerLogo } from './providers.js';
 import { initModelPicker, updateModelPicker } from './modelPicker.js';
 import themeModule from './theme.js';
 import spinnerModule from './spinner.js';
+import documentModule from './document.js';
 
 const API_BASE = window.location.origin;
 
@@ -555,6 +556,36 @@ function createSessionItem(s) {
       dropdown.appendChild(selectMoreItem);
     }
   }
+
+  // Format conversation to editor document
+  const _formatIcon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>';
+  const formatItem = document.createElement('div');
+  formatItem.className = 'dropdown-item-compact';
+  formatItem.innerHTML = _icon(_formatIcon) + '<span>Format to Editor</span>';
+  formatItem.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    dropdown.style.display = 'none';
+    uiModule.showToast('Formatting conversation…', { duration: 90000 });
+    try {
+      const res = await fetch(`${API_BASE}/api/session/${s.id}/format-to-doc`, {
+        method: 'POST',
+        credentials: 'same-origin',
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || `HTTP ${res.status}`);
+      }
+      const doc = await res.json();
+      if (documentModule.injectFreshDoc) documentModule.injectFreshDoc(doc);
+      else await documentModule.loadDocument(doc.id);
+      if (!documentModule.isPanelOpen || !documentModule.isPanelOpen()) documentModule.openPanel();
+      uiModule.showToast('Conversation formatted and opened in editor');
+    } catch (err) {
+      console.error('Format to editor failed:', err);
+      uiModule.showError('Format failed: ' + err.message);
+    }
+  });
+  dropdown.appendChild(formatItem);
 
   // Copy & Move to folder
   const folderItem = buildFolderSubmenu(s.id, s.folder, dropdown);
