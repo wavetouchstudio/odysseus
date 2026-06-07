@@ -4,7 +4,7 @@
  */
 
 import spinnerModule from './spinner.js';
-import { styledConfirm, showToast, emptyStateIcon } from './ui.js';
+import { styledConfirm, styledPrompt, showToast, emptyStateIcon } from './ui.js';
 import { folderDisplayName, sortedFolders } from './emailInbox.js';
 import settingsModule from './settings.js';
 import * as Modals from './modalManager.js';
@@ -817,6 +817,7 @@ export function openEmailLibrary(opts = {}) {
                 </optgroup>
               </select>
               <button class="memory-toolbar-btn email-filter-select-btn" id="email-lib-select-btn">Select</button>
+              <button class="memory-toolbar-btn" id="email-lib-clean-btn" title="Delete all emails from a sender or domain">🧹</button>
               <button class="memory-toolbar-btn email-filter-refresh-btn" id="email-lib-refresh-btn" title="Refresh">
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;"><path d="M1 4v6h6"/><path d="M23 20v-6h-6"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/></svg>
               </button>
@@ -1178,6 +1179,31 @@ export function openEmailLibrary(opts = {}) {
       setTimeout(_revealFab, 400);
     }
   }
+
+  // Clean sender button
+  document.getElementById('email-lib-clean-btn')?.addEventListener('click', async () => {
+    let defaultSender = '';
+    // Prefer checked emails, fall back to the currently-open (expanded) card
+    if (state._selectedUids.size > 0) {
+      const firstUid = Array.from(state._selectedUids)[0];
+      const em = state._libEmails.find(e => String(e.uid) === String(firstUid));
+      if (em) defaultSender = _extractSenderDomain(_emFromAddr(em)) || _emFromAddr(em) || '';
+    } else {
+      const expandedCard = document.querySelector('.email-card-expanded[data-uid]');
+      if (expandedCard) {
+        const uid = expandedCard.dataset.uid;
+        const em = state._libEmails.find(e => String(e.uid) === String(uid));
+        if (em) defaultSender = _extractSenderDomain(_emFromAddr(em)) || _emFromAddr(em) || '';
+      }
+    }
+    const sender = await styledPrompt('Delete all emails from what sender or domain?', {
+      placeholder: 'e.g. reddit.com or newsletter@example.com',
+      defaultValue: defaultSender,
+      confirmText: 'Search & Delete',
+    });
+    if (!sender || !sender.trim()) return;
+    await _cleanBySender(sender.trim());
+  });
 
   // Select mode toggle
   document.getElementById('email-lib-select-btn').addEventListener('click', () => {
@@ -4585,6 +4611,47 @@ function _showReaderMoreMenu(em, card, reader, anchor) {
       },
     },
     {
+      label: 'Unsubscribe',
+      icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/><line x1="1" y1="1" x2="23" y2="23"/></svg>',
+      action: async () => {
+        const ok = await styledConfirm(
+          `Auto-unsubscribe from "${_extractSenderDomain(_emFromAddr(em)) || _emFromAddr(em) || 'this sender'}"?\n\nWaveTouchOS will find and click the unsubscribe link in this email.`,
+          { confirmText: 'Unsubscribe', cancelText: 'Cancel' }
+        );
+        if (!ok) return;
+        showToast('Finding unsubscribe link…');
+        try {
+          const resp = await fetch(
+            `${API_BASE}/api/email/unsubscribe/${em.uid}?folder=${encodeURIComponent(state._libFolder)}${_acct()}`,
+            { method: 'POST' }
+          );
+          const data = await resp.json();
+          if (data.success && data.open_in_browser && data.url) {
+            window.open(data.url, '_blank');
+            showToast('Opened unsubscribe page — finish there if it asks for confirmation');
+          } else if (data.success) {
+            showToast(`Unsubscribed via one-click (HTTP ${data.status})`);
+          } else if (data.requires_action && data.url) {
+            window.open(data.url, '_blank');
+            showToast('Opened mailto unsubscribe link');
+          } else {
+            showToast(data.message || 'No unsubscribe link found');
+          }
+        } catch (e) {
+          showToast('Unsubscribe request failed');
+        }
+      },
+    },
+    {
+      label: 'Block sender',
+      icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>',
+      danger: true,
+      action: async () => {
+        const domain = _extractSenderDomain(_emFromAddr(em));
+        await _cleanBySender(domain || _emFromAddr(em) || '');
+      },
+    },
+    {
       label: 'Move to Trash',
       icon: _trashIcon,
       action: async () => {
@@ -4653,6 +4720,57 @@ function _showReaderMoreMenu(em, card, reader, anchor) {
     }
   };
   setTimeout(() => document.addEventListener('click', close, true), 10);
+}
+
+// Email cards carry from_name/from_address (not a combined `from` string) —
+// build the "Name <addr>" form _extractSenderDomain expects, with a few
+// fallbacks for shapes seen elsewhere (search results, reminders).
+function _emFromAddr(em) {
+  if (!em) return '';
+  if (em.from_address) return `${em.from_name || ''} <${em.from_address}>`.trim();
+  return em.from || em.sender || '';
+}
+
+function _extractSenderDomain(fromStr) {
+  if (!fromStr) return '';
+  const match = fromStr.match(/<([^>]+)>/) || fromStr.match(/([^\s@]+@([^\s>]+))/);
+  const addr = match ? match[1] : fromStr.trim();
+  const atIdx = addr.indexOf('@');
+  return atIdx >= 0 ? addr.slice(atIdx + 1).toLowerCase() : addr.toLowerCase();
+}
+
+async function _cleanBySender(sender) {
+  if (!sender) return;
+  const ok = await styledConfirm(
+    `Delete ALL emails from "${sender}"?\n\nRuns in the background — you'll get an ntfy notification when done.`,
+    { confirmText: 'Delete All', cancelText: 'Cancel', danger: true }
+  );
+  if (!ok) return;
+
+  try {
+    const resp = await fetch(
+      `${API_BASE}/api/email/clean-sender-bg?sender=${encodeURIComponent(sender)}${_acct()}`,
+      { method: 'POST' }
+    );
+    const data = await resp.json();
+    if (data.success) {
+      showToast(`Cleaning ${sender} in background…`);
+      // Optimistically remove visible emails from this sender
+      state._libEmails = state._libEmails.filter(e => {
+        const fromStr = _emFromAddr(e);
+        const d = _extractSenderDomain(fromStr);
+        const matches = (d && (d === sender || d.endsWith(`.${sender}`) || sender.endsWith(`.${d}`)))
+          || fromStr.toLowerCase().includes(sender.toLowerCase());
+        return !matches;
+      });
+      _renderGrid();
+      _libCacheWriteBack();
+    } else {
+      showToast(`Error: ${data.error || 'Unknown error'}`);
+    }
+  } catch (e) {
+    showToast('Request failed');
+  }
 }
 
 function _showCardMenu(em, anchor) {
@@ -4765,7 +4883,38 @@ function _showCardMenu(em, anchor) {
     },
   });
 
+  const _blockIcon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>';
+  const _unsubIcon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
   actions.push(
+    { label: 'Unsubscribe', icon: _unsubIcon, action: async () => {
+      const ok = await styledConfirm(
+        `Auto-unsubscribe from "${_extractSenderDomain(_emFromAddr(em)) || _emFromAddr(em) || 'this sender'}"?`,
+        { confirmText: 'Unsubscribe', cancelText: 'Cancel' }
+      );
+      if (!ok) return;
+      showToast('Finding unsubscribe link…');
+      try {
+        const resp = await fetch(
+          `${API_BASE}/api/email/unsubscribe/${em.uid}?folder=${encodeURIComponent(state._libFolder)}${_acct()}`,
+          { method: 'POST' }
+        );
+        const data = await resp.json();
+        if (data.success && data.open_in_browser && data.url) {
+          window.open(data.url, '_blank');
+          showToast('Opened unsubscribe page — finish there if it asks for confirmation');
+        } else if (data.success) {
+          showToast(`Unsubscribed via one-click (HTTP ${data.status})`);
+        } else if (data.requires_action && data.url) {
+          window.open(data.url, '_blank');
+        } else {
+          showToast(data.message || 'No unsubscribe link found');
+        }
+      } catch (e) { showToast('Unsubscribe request failed'); }
+    }},
+    { label: 'Block sender', icon: _blockIcon, danger: true, action: async () => {
+      const domain = _extractSenderDomain(_emFromAddr(em));
+      await _cleanBySender(domain || _emFromAddr(em) || '');
+    }},
     { label: 'Delete', icon: _delIcon, danger: true, action: async () => {
       const subject = em.subject || '(no subject)';
       const ok = await styledConfirm(`Delete "${subject}"?`, { confirmText: 'Delete', cancelText: 'Cancel', danger: true });

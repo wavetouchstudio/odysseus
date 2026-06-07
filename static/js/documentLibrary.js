@@ -1627,6 +1627,8 @@ let _libraryArchivedView = false;   // Documents tab showing archived docs?
                 </select>
                 <button class="memory-toolbar-btn" id="doclib-chats-select-btn">Select</button>
                 <button class="memory-toolbar-btn" id="doclib-chats-tidy-btn" title="AI tidy: delete junk sessions and organize into folders"><svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:-1px;margin-right:2px;"><path d="M12 0L14.59 8.41L23 12L14.59 15.59L12 24L9.41 15.59L1 12L9.41 8.41Z"/></svg> Tidy</button>
+                <button class="memory-toolbar-btn" id="doclib-chats-index-btn" title="Summarize all chats into one editor document">⬆ Index</button>
+                <button class="memory-toolbar-btn danger" id="doclib-chats-clean-btn" title="Archive all non-starred chats">Clean</button>
               </div>
               <input type="text" id="doclib-chats-search" placeholder="Search chats\u2026" class="memory-search-input" />
               <div id="doclib-chats-chips" class="doclib-lang-chips"></div>
@@ -2101,11 +2103,12 @@ let _libraryArchivedView = false;   // Documents tab showing archived docs?
         const msgCountHtml = _chatMsgs > 0
           ? '<span style="opacity:0.45;font-weight:normal;font-size:0.9em;margin-left:6px;">\u00b7 ' + _chatMsgs + ' msg' + (_chatMsgs === 1 ? '' : 's') + '</span>'
           : '';
+        const starHtml = s.is_important ? '<span title="Starred" style="color:#f5c542;font-size:12px;margin-left:4px;flex-shrink:0;">\u2605</span>' : '';
         card.innerHTML =
           '<div class="doclib-chat-header" style="display:flex;align-items:center;width:100%;gap:6px;">' +
             cbHtml +
             '<div style="flex:1;min-width:0;">' +
-              '<div class="memory-item-title">' + chatIconSvg + _esc(s.name || 'Untitled') + msgCountHtml + '</div>' +
+              '<div class="memory-item-title">' + chatIconSvg + _esc(s.name || 'Untitled') + msgCountHtml + starHtml + '</div>' +
               '<div class="memory-item-meta" style="font-size:10px;opacity:0.4;margin-top:2px;">' + [model, _relTime(s.updated_at)].filter(Boolean).join(' \u00b7 ') + '</div>' +
             '</div>' +
             chevronSvg +
@@ -2116,6 +2119,13 @@ let _libraryArchivedView = false;   // Documents tab showing archived docs?
         if (cb) { cb.addEventListener('click', e => e.stopPropagation()); cb.addEventListener('change', () => { if (cb.checked) _chatsSelected.add(s.id); else _chatsSelected.delete(s.id); _updateChatsCount(); }); }
         card.querySelector('._chat-menu').addEventListener('click', (e) => { e.stopPropagation(); _showLibDropdown(e.currentTarget, [
           { label: 'Open', action: () => { if (window.sessionModule) window.sessionModule.selectSession(s.id); } },
+          { label: s.is_important ? '\u2605 Unstar' : '\u2606 Star', action: async () => {
+            const newVal = !s.is_important;
+            const fd = new FormData(); fd.append('important', newVal);
+            await fetch(API_BASE + '/api/session/' + s.id + '/important', { method: 'POST', body: fd });
+            s.is_important = newVal;
+            _renderChatsGrid();
+          }},
           { label: 'Copy', action: () => _copyChatById(s.id) },
           { label: 'Archive', action: async () => { await fetch(API_BASE + '/api/session/' + s.id + '/archive', { method: 'POST', headers: {'Content-Type':'application/json'} }); _renderLibChats(); } },
           { label: 'Delete', action: async () => {
@@ -2165,6 +2175,96 @@ let _libraryArchivedView = false;   // Documents tab showing archived docs?
     // Chats event listeners
     document.getElementById('doclib-chats-sort').addEventListener('change', (e) => { _chatsSort = e.target.value; _renderChatsGrid(); });
     document.getElementById('doclib-chats-search').addEventListener('input', (e) => { _chatsSearch = e.target.value.trim(); _renderChatsGrid(); });
+
+    // ⬆ Index button — picker with Quick / Standard / Deep + model dropdown
+    const _idxBtn = document.getElementById('doclib-chats-index-btn');
+    if (_idxBtn) {
+      const _INDEX_TYPES = [
+        { type: 'quick',    label: 'Quick Index',    desc: 'Name, date, message count — no LLM' },
+        { type: 'standard', label: 'Standard Index',  desc: 'First message per chat — one LLM call' },
+        { type: 'deep',     label: 'Deep Index',      desc: 'Multi-point sampling — full narrative arc' },
+      ];
+      async function _runIndex(type, model) {
+        _idxBtn.textContent = '…';
+        _idxBtn.disabled = true;
+        try {
+          const body = { index_type: type };
+          if (model) body.model = model;
+          const res = await fetch(API_BASE + '/api/sessions/summarize-to-doc', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin', body: JSON.stringify(body),
+          });
+          if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.detail || `HTTP ${res.status}`); }
+          const doc = await res.json();
+          if (window.documentModule && window.documentModule.injectFreshDoc) window.documentModule.injectFreshDoc(doc);
+          else if (_loadDocument) _loadDocument(doc.id);
+          if (_openPanel) _openPanel();
+          uiModule.showToast('Chat index created in editor');
+        } catch (err) {
+          uiModule.showError('Index failed: ' + err.message);
+        } finally {
+          _idxBtn.textContent = '⬆ Index';
+          _idxBtn.disabled = false;
+        }
+      }
+      _idxBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const existing = document.getElementById('_idx-picker');
+        if (existing) { existing.remove(); return; }
+        const picker = document.createElement('div');
+        picker.id = '_idx-picker';
+        picker.style.cssText = 'position:fixed;z-index:99999;background:var(--bg2,#1e1e1e);border:1px solid var(--border,#444);border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:6px;min-width:240px;box-shadow:0 4px 16px rgba(0,0,0,.4);';
+        const rect = _idxBtn.getBoundingClientRect();
+        picker.style.top = (rect.bottom + 4) + 'px';
+        picker.style.left = rect.left + 'px';
+        const modelRow = document.createElement('div');
+        modelRow.style.cssText = 'display:flex;align-items:center;gap:6px;margin-bottom:4px;';
+        modelRow.innerHTML = '<span style="font-size:11px;opacity:0.6;">Model:</span>';
+        const modelSel = document.createElement('select');
+        modelSel.style.cssText = 'flex:1;font-size:11px;background:var(--bg3,#2a2a2a);border:1px solid var(--border,#444);color:var(--fg,#eee);border-radius:4px;padding:2px 4px;';
+        modelSel.innerHTML = '<option value="">Auto (default)</option>';
+        fetch(API_BASE + '/api/models').then(r => r.json()).then(data => {
+          (data.models || []).forEach(m => { const o = document.createElement('option'); o.value = m.id || m; o.textContent = m.id || m; modelSel.appendChild(o); });
+        }).catch(() => {});
+        modelRow.appendChild(modelSel);
+        picker.appendChild(modelRow);
+        _INDEX_TYPES.forEach(opt => {
+          const row = document.createElement('div');
+          row.style.cssText = 'cursor:pointer;padding:7px 10px;border-radius:6px;border:1px solid var(--border,#444);display:flex;flex-direction:column;gap:2px;';
+          row.innerHTML = `<span style="font-size:12px;font-weight:600;">${opt.label}</span><span style="font-size:10px;opacity:0.55;">${opt.desc}</span>`;
+          row.addEventListener('mouseenter', () => row.style.background = 'var(--bg3,#2a2a2a)');
+          row.addEventListener('mouseleave', () => row.style.background = '');
+          row.addEventListener('click', () => { picker.remove(); _runIndex(opt.type, modelSel.value || null); });
+          picker.appendChild(row);
+        });
+        document.body.appendChild(picker);
+        const _close = (ev) => { if (!picker.contains(ev.target) && ev.target !== _idxBtn) { picker.remove(); document.removeEventListener('mousedown', _close); } };
+        setTimeout(() => document.addEventListener('mousedown', _close), 0);
+      });
+    }
+
+    // Clean button — archive all non-starred sessions
+    const _cleanBtn = document.getElementById('doclib-chats-clean-btn');
+    if (_cleanBtn) {
+      _cleanBtn.addEventListener('click', async () => {
+        const toClean = _chatsSessions.filter(s => !s.is_important);
+        if (!toClean.length) { uiModule.showToast('No unstarred chats to clean.'); return; }
+        const starredCount = _chatsSessions.length - toClean.length;
+        const msg = `Archive ${toClean.length} unstarred chat${toClean.length === 1 ? '' : 's'}?` +
+          (starredCount ? ` (${starredCount} starred chat${starredCount === 1 ? '' : 's'} will be kept)` : ' No chats are starred.');
+        if (!await window.styledConfirm(msg, { confirmText: 'Archive All', danger: true })) return;
+        _cleanBtn.textContent = '…';
+        _cleanBtn.disabled = true;
+        await Promise.all(toClean.map(s =>
+          fetch(API_BASE + '/api/session/' + s.id + '/archive', { method: 'POST', headers: { 'Content-Type': 'application/json' } }).catch(() => {})
+        ));
+        _cleanBtn.textContent = 'Clean';
+        _cleanBtn.disabled = false;
+        await _renderLibChats();
+        uiModule.showToast(`Archived ${toClean.length} chats.`);
+      });
+    }
+
     document.getElementById('doclib-chats-select-btn').addEventListener('click', () => { _chatsSelectMode = !_chatsSelectMode; _chatsSelected.clear(); document.getElementById('doclib-chats-bulk').classList.toggle('hidden', !_chatsSelectMode); _renderChatsGrid(); });
     document.getElementById('doclib-chats-bulk-cancel')?.addEventListener('click', () => {
       _chatsSelectMode = false; _chatsSelected.clear();

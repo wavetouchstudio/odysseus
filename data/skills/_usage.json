@@ -1,7 +1,7 @@
 {
   "deadlyjrmint@gmail.com::create-and-read-files-in-obsidian-via-mcp": {
-    "uses": 35,
-    "last_used": 1780707768,
+    "uses": 55,
+    "last_used": 1780819754,
     "audit_verdict": "inconclusive",
     "audit_by_teacher": false,
     "audit_worker_model": "deepseek-v4-pro:cloud",
@@ -15,17 +15,9 @@
     "audit_worker_model": "deepseek-v4-pro:cloud",
     "audited_at": 1780704307.719743
   },
-  "deadlyjrmint@gmail.com::create-a-cube-actor-in-unreal-via-unreal-mcp": {
-    "uses": 47,
-    "last_used": 1780707768,
-    "audit_verdict": "inconclusive",
-    "audit_by_teacher": false,
-    "audit_worker_model": "deepseek-v4-pro:cloud",
-    "audited_at": 1780704308.3295598
-  },
   "deadlyjrmint@gmail.com::execute-handoff-instructions-from-markdown-using-mcp": {
-    "uses": 0,
-    "last_used": null,
+    "uses": 5,
+    "last_used": 1780849646,
     "audit_verdict": "inconclusive",
     "audit_by_teacher": false,
     "audit_worker_model": "deepseek-v4-pro:cloud",
@@ -91,43 +83,9 @@
     "audit_worker_model": "openai/gpt-3.5-turbo",
     "audited_at": 1780741201.097293
   },
-  "deadlyjrmint@gmail.com::list-obsidian-vault-files": {
-    "uses": 0,
-    "last_used": null,
-    "audit_verdict": "needs_work",
-    "audit_by_teacher": false,
-    "audit_worker_model": "gpt-oss:20b",
-    "audited_at": 1780772990.3028255
-  },
-  "deadlyjrmint@gmail.com::list-all-files-in-an-obsidian-vault": {
-    "uses": 8,
-    "last_used": 1780776597,
-    "necessity": {
-      "necessary": false,
-      "redundant_with": [],
-      "reason": "Duplicates existing Obsidian file\u2011listing skills with a generic shell command"
-    },
-    "audit_verdict": "skipped",
-    "audit_by_teacher": false,
-    "audit_worker_model": "openrouter/free",
-    "audited_at": 1780776866.7560706
-  },
-  "deadlyjrmint@gmail.com::write-verify-pair": {
-    "uses": 5,
-    "last_used": 1780776740,
-    "necessity": {
-      "necessary": true,
-      "redundant_with": [],
-      "reason": "Establishes a critical reliability pattern for tool-use verification that prevents silent failures, which is a non-obvious operational safeguard."
-    },
-    "audit_verdict": "inconclusive",
-    "audit_by_teacher": false,
-    "audit_worker_model": "openrouter/free",
-    "audited_at": 1780776484.278749
-  },
   "deadlyjrmint@gmail.com::contact-subagent": {
-    "uses": 0,
-    "last_used": null,
+    "uses": 22,
+    "last_used": 1780866095,
     "necessity": {
       "necessary": true,
       "redundant_with": [
@@ -135,17 +93,132 @@
       ],
       "reason": "It enables efficient delegation without redundancy."
     },
+    "audit_verdict": "pass",
+    "audit_by_teacher": false,
+    "audit_worker_model": "gemma4:12b",
+    "audited_at": 1780798940.2127075
+  },
+  "deadlyjrmint@gmail.com::clean-chat-history": {
+    "uses": 4,
+    "last_used": 1780853934,
+    "necessity": {
+      "necessary": true,
+      "redundant_with": [],
+      "reason": "It captures a specific, non-obvious procedure for cleaning chat history."
+    },
+    "audit_verdict": "pass",
+    "audit_by_teacher": false,
+    "audit_worker_model": "lfm2.5:latest",
+    "audited_at": 1780798309.1487682
+  },
+  "deadlyjrmint@gmail.com::write-verify-pair": {
+    "uses": 0,
+    "last_used": null,
     "audit_verdict": "inconclusive",
     "audit_by_teacher": false,
-    "audit_worker_model": "openrouter/free",
-    "audited_at": 1780776581.1243382
+    "audit_worker_model": "gemma4:12b",
+    "audited_at": 1780798283.8183303
   },
-  "deadlyjrmint@gmail.com::list-obsidian-files": {
+  "deadlyjrmint@gmail.com::consolidate-memories": {
+    "uses": 1,
+    "last_used": 1780798340,
+    "necessity": {
+      "necessary": true,
+      "redundant_with": [],
+      "reason": "It defines a specific, non\u2011obvious procedure for merging and cleaning user memories, which no other skill covers."
+    },
+    "audit_verdict": "pass",
+    "audit_by_teacher": false,
+    "audit_worker_model": "lfm2.5:latest",
+    "audited_at": 1780798368.4935894
+  },
+  "deadlyjrmint@gmail.com::consolidate-skills": {
+    "uses": 2,
+    "last_used": 1780798391,
+    "necessity": {
+      "necessary": true,
+      "redundant_with": [],
+      "reason": "The skill outlines a specific audit and merge process that is not duplicated by any existing skill."
+    },
+    "audit_verdict": "pass",
+    "audit_by_teacher": false,
+    "audit_worker_model": "lfm2.5:latest",
+    "audited_at": 1780798434.0467927
+  },
+  "deadlyjrmint@gmail.com::obsidian-list-files-in-vault": {
+    "uses": 4,
+    "last_used": 1780849646,
+    "necessity": {
+      "necessary": false,
+      "redundant_with": [],
+      "reason": "Listing files is a basic operation that can be performed directly with the existing Obsidian tools; this skill adds no unique logic."
+    },
+    "audit_verdict": "pass",
+    "audit_by_teacher": false,
+    "audit_worker_model": "gemma4:12b",
+    "audited_at": 1780819624.7674706
+  },
+  "deadlyjrmint@gmail.com::read-content-from-a-specific-obsidian-directory": {
+    "uses": 0,
+    "last_used": null,
+    "necessity": {
+      "necessary": false,
+      "redundant_with": [],
+      "reason": "The procedure is a simple combination of existing list\u2011and\u2011read tools, so it can be performed without a dedicated skill."
+    },
+    "audit_verdict": "pass",
+    "audit_by_teacher": false,
+    "audit_worker_model": "gemma4:12b",
+    "audited_at": 1780819996.3966599
+  },
+  "deadlyjrmint@gmail.com::resolve-folder-path-ambiguities-via-listing": {
+    "uses": 0,
+    "last_used": null,
+    "necessity": {
+      "necessary": false,
+      "redundant_with": [],
+      "reason": "Duplicate functionality"
+    },
+    "audit_verdict": "pass",
+    "audit_by_teacher": false,
+    "audit_worker_model": "gemma4:12b",
+    "audited_at": 1780820361.4979293
+  },
+  "deadlyjrmint@gmail.com::clarify-email-rewrite": {
+    "uses": 0,
+    "last_used": null,
+    "necessity": {
+      "necessary": true,
+      "redundant_with": [],
+      "reason": "Captures a specific clarification procedure needed before rewriting an email."
+    },
+    "audit_verdict": "pass",
+    "audit_by_teacher": false,
+    "audit_worker_model": "gpt-oss:20b",
+    "audited_at": 1780819590.6074743
+  },
+  "deadlyjrmint@gmail.com::im-looping-oh-no": {
     "uses": 0,
     "last_used": null,
     "audit_verdict": "pass",
     "audit_by_teacher": false,
-    "audit_worker_model": "openrouter/free",
-    "audited_at": 1780776862.0548053
+    "audit_worker_model": "gemma4:12b",
+    "audited_at": 1780820811.4017797
+  },
+  "deadlyjrmint@gmail.com::qna-time": {
+    "uses": 0,
+    "last_used": null,
+    "audit_verdict": "pass",
+    "audit_by_teacher": false,
+    "audit_worker_model": "gemma4:12b",
+    "audited_at": 1780820989.884866
+  },
+  "deadlyjrmint@gmail.com::youre-not-getting-it": {
+    "uses": 0,
+    "last_used": null,
+    "audit_verdict": "pass",
+    "audit_by_teacher": false,
+    "audit_worker_model": "gemma4:12b",
+    "audited_at": 1780821303.6225607
   }
 }

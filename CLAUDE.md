@@ -48,7 +48,7 @@ curl -s -X POST http://localhost:7000/api/subagent \
 ```
 
 **Model omitted** → WaveTouchOS auto-cascades through its hierarchy:
-`gpt-oss:20b` → `hermes:8b` → `gemma4:12b` → `devstral-small-2:latest` → OpenRouter → Gemini → Mistral
+`gemma4:12b` → `gpt-oss:20b` → `hermes:8b` → `devstral-small-2:latest` → OpenRouter (free) → Gemini → Mistral
 
 ---
 
@@ -212,9 +212,9 @@ curl http://localhost:7000/api/subagent/runs
 
 The WaveTouchOS subagent uses these models internally. Claude Code does not call Ollama directly — it always goes through `/api/subagent`.
 
-- `gpt-oss:20b` — best content quality, primary choice
+- `gemma4:12b` — primary choice; fast, creative, modern, supports image interpretation
+- `gpt-oss:20b` — reliable fallback
 - `hermes:8b` — fast, good format adherence
-- `gemma4:12b` — best reasoning
 - `devstral-small-2:latest` — capable but slow
 
 ---

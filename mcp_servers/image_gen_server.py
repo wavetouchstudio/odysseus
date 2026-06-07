@@ -141,6 +141,9 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                 "cfg_scale": 7,
                 "sampler_name": "Euler a",
             }
+            if model_spec:
+                a1111_payload["override_settings"] = {"sd_model_checkpoint": model_spec}
+                a1111_payload["override_settings_restore_afterwards"] = False
             async with httpx.AsyncClient(timeout=httpx.Timeout(connect=30.0, read=300.0, write=30.0, pool=30.0)) as client:
                 resp = await client.post(a1111_base + "/sdapi/v1/txt2img", json=a1111_payload, auth=a1111_auth)
                 await resp.aread()  # force full body buffer — response can be 3-5MB for large images

@@ -1,26 +1,25 @@
 ---
 name: consolidate-skills
-description: Audit and merge redundant or overlapping skills, remove broken ones, and sharpen descriptions
+description: "Audit and merge redundant or overlapping skills, remove broken ones, and sharpen descriptions"
+version: 1.0.0
 category: general
 status: published
-confidence: high
+confidence: 0.95
 source: manual
-owner: null
+owner: "deadlyjrmint@gmail.com"
 created: 2026-06-06
 ---
 
-# Consolidate Skills
-
-Use this skill when the skill library has grown messy — duplicate procedures, skills with outdated approaches, or multiple skills that cover the same task differently.
-
-## When to use
+## When to Use
 
 - User says "clean up skills" or "consolidate skills"
 - You notice skills with overlapping purpose or near-identical names
 - Skills reference tools or endpoints that no longer exist
 - A skill's approach was superseded by a better method
 
-## How
+# Consolidate Skills
+
+Use this skill when the skill library has grown messy — duplicate procedures, skills with outdated approaches, or multiple skills that cover the same task differently.
 
 1. **List all skills**
    ```
@@ -52,14 +51,10 @@ Use this skill when the skill library has grown messy — duplicate procedures, 
 
 6. **For scope overlaps** — create one merged skill and delete both originals
 
-## Rules
-
 - Never delete a skill without first checking it has no unique content worth preserving
 - Keep the `name` slug short and action-oriented (verb-noun: `list-obsidian-files`, not `how-to-list-files-in-obsidian`)
 - A skill's `description` (one line) is what the agent uses to decide whether to fetch it — make it specific enough to be useful as a search hint
 - After merging, update the Obsidian Skills Register if one exists: `1 Reference/WaveTouchOS Skills Register.md`
-
-## Quality checklist for a good skill
 
 - [ ] `name` is unique and action-oriented
 - [ ] `description` is one line, specific, useful as a search hint

@@ -1749,6 +1749,306 @@ def setup_email_routes():
             logger.error(f"Failed to permanently delete email {uid}: {e}")
             return {"success": False, "error": "Mail operation failed"}
 
+    @router.delete("/by-sender")
+    async def delete_emails_by_sender(
+        sender: str = Query(...),
+        account_id: str | None = Query(None),
+        permanent: bool = Query(False),
+        owner: str = Depends(require_owner),
+    ):
+        """Delete all emails matching a sender address or domain across INBOX and common folders."""
+        if account_id:
+            _assert_owns_account(account_id, owner)
+        if not sender or len(sender.strip()) < 3:
+            return {"success": False, "error": "sender must be at least 3 characters"}
+        sender = sender.strip()
+
+        def _search_uids(conn, criteria: str):
+            st, data = conn.uid("SEARCH", None, criteria)
+            return set(data[0].split()) if st == "OK" and data and data[0] else set()
+
+        def _search_quote(value: str) -> str:
+            return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+        deleted = 0
+        try:
+            with _imap(account_id, owner=owner) as conn:
+                trash_folder = _resolve_mail_folder(conn, "Trash", role="trash")
+                sent_folder = _detect_sent_folder(conn)
+                candidates = ["INBOX", "All Mail", "[Gmail]/All Mail", "[Gmail]/Spam", "Spam", "Junk", sent_folder]
+                seen = set()
+                for folder_name in candidates:
+                    if not folder_name or folder_name in seen:
+                        continue
+                    seen.add(folder_name)
+                    try:
+                        st, _ = conn.select(_q(folder_name))
+                        if st != "OK":
+                            continue
+                        uids = _search_uids(conn, f"(FROM {_search_quote(sender)})")
+                        if not uids:
+                            continue
+                        folder_deleted = 0
+                        for uid in sorted(uids, key=lambda b: int(b)):
+                            try:
+                                if permanent:
+                                    conn.uid("STORE", uid, "+FLAGS", "\\Deleted")
+                                else:
+                                    mv_st, _ = conn.uid("MOVE", uid, _q(trash_folder))
+                                    if mv_st != "OK":
+                                        conn.uid("COPY", uid, _q(trash_folder))
+                                        conn.uid("STORE", uid, "+FLAGS", "\\Deleted")
+                                folder_deleted += 1
+                            except Exception as _ue:
+                                logger.warning(f"by-sender cleanup skipped uid {uid!r} in {folder_name!r}: {_ue}")
+                        conn.expunge()
+                        deleted += folder_deleted
+                    except Exception as e:
+                        logger.warning(f"by-sender cleanup skipped {folder_name!r}: {e}")
+            _invalidate_list_cache(account_id)
+            return {"success": True, "deleted": deleted, "sender": sender}
+        except Exception as e:
+            logger.error(f"delete_emails_by_sender failed: {e}")
+            return {"success": False, "error": "Mail operation failed"}
+
+    # ── Background clean-sender job tracker ──────────────────────────────────
+    _clean_jobs: dict = {}
+
+    async def _send_ntfy(title: str, message: str, tags: str = "broom") -> None:
+        """Fire a one-shot ntfy notification using the configured integration."""
+        try:
+            import httpx as _hx
+            from src.integrations import load_integrations
+            from src.settings import load_settings
+            _settings = load_settings()
+            intg = next(
+                (i for i in load_integrations()
+                 if i.get("preset") == "ntfy" and i.get("enabled", True) and i.get("base_url")),
+                None,
+            )
+            if not intg:
+                return
+            base = intg["base_url"].rstrip("/")
+            topic = _settings.get("reminder_ntfy_topic") or "wavetouchos"
+            # HTTP header values must be ASCII — non-ASCII chars (em dashes,
+            # smart quotes, emoji in subjects/sender names) raise UnicodeEncodeError
+            # deep in httpx, which the broad except below would swallow silently.
+            _ascii = lambda s: s.encode("ascii", "replace").decode("ascii")
+            hdrs = {"Title": _ascii(title), "Priority": "default", "Tags": _ascii(tags)}
+            if intg.get("api_key"):
+                hdrs["Authorization"] = f"Bearer {intg['api_key']}"
+            async with _hx.AsyncClient(timeout=10.0) as client:
+                await client.post(f"{base}/{topic}", content=message, headers=hdrs)
+        except Exception as _e:
+            logger.debug(f"ntfy notify failed: {_e}")
+
+    async def _run_clean_sender_bg(job_id: str, sender: str, account_id, owner: str, permanent: bool) -> None:
+        """Background loop: delete all emails from sender until none remain."""
+        import asyncio as _asyncio
+        job = _clean_jobs.get(job_id)
+
+        def _search_quote(v):
+            return '"' + v.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+        def _one_pass_sync():
+            deleted = 0
+            try:
+                with _imap(account_id, owner=owner) as conn:
+                    trash_folder = _resolve_mail_folder(conn, "Trash", role="trash")
+                    sent_folder = _detect_sent_folder(conn)
+                    candidates = ["INBOX", "All Mail", "[Gmail]/All Mail", "[Gmail]/Spam", "Spam", "Junk", sent_folder]
+                    seen = set()
+                    for folder_name in candidates:
+                        if not folder_name or folder_name in seen:
+                            continue
+                        seen.add(folder_name)
+                        try:
+                            st, _ = conn.select(_q(folder_name))
+                            if st != "OK":
+                                continue
+                            st2, data = conn.uid("SEARCH", None, f"(FROM {_search_quote(sender)})")
+                            uids = set(data[0].split()) if st2 == "OK" and data and data[0] else set()
+                            if not uids:
+                                continue
+                            folder_deleted = 0
+                            for uid in sorted(uids, key=lambda b: int(b)):
+                                try:
+                                    if permanent:
+                                        conn.uid("STORE", uid, "+FLAGS", "\\Deleted")
+                                    else:
+                                        mv_st, _ = conn.uid("MOVE", uid, _q(trash_folder))
+                                        if mv_st != "OK":
+                                            conn.uid("COPY", uid, _q(trash_folder))
+                                            conn.uid("STORE", uid, "+FLAGS", "\\Deleted")
+                                    folder_deleted += 1
+                                except Exception as _ue:
+                                    logger.warning(f"clean-sender bg skipped uid {uid!r} in {folder_name!r}: {_ue}")
+                            conn.expunge()
+                            deleted += folder_deleted
+                        except Exception as _fe:
+                            logger.warning(f"clean-sender bg skipped {folder_name!r}: {_fe}")
+                _invalidate_list_cache(account_id)
+            except Exception as _e:
+                logger.warning(f"clean-sender bg pass failed: {_e}")
+            return deleted
+
+        total = 0
+        max_passes = 50
+        try:
+            for _ in range(max_passes):
+                deleted = await _asyncio.to_thread(_one_pass_sync)
+                total += deleted
+                if job:
+                    job["deleted"] = total
+                if deleted == 0:
+                    break
+                await _asyncio.sleep(0.8)
+
+            if job:
+                job["status"] = "done"
+                job["deleted"] = total
+
+            title = f"Clean complete - {sender}"
+            msg = f"Deleted {total} email{'s' if total != 1 else ''} from {sender}" if total else f"No emails found from {sender}"
+            await _send_ntfy(title, msg)
+            logger.info(f"clean-sender bg done: {total} deleted from {sender!r} for {owner!r}")
+        except Exception as e:
+            logger.error(f"_run_clean_sender_bg failed: {e}")
+            if job:
+                job["status"] = "error"
+                job["error"] = str(e)
+
+    @router.post("/clean-sender-bg")
+    async def clean_sender_bg(
+        sender: str = Query(...),
+        account_id: str | None = Query(None),
+        permanent: bool = Query(False),
+        owner: str = Depends(require_owner),
+    ):
+        """Start a background job that deletes all emails from a sender/domain and notifies via ntfy when done."""
+        import asyncio as _asyncio, uuid as _uuid
+        if account_id:
+            _assert_owns_account(account_id, owner)
+        if not sender or len(sender.strip()) < 3:
+            return {"success": False, "error": "sender must be at least 3 characters"}
+        sender = sender.strip()
+        job_id = _uuid.uuid4().hex[:12]
+        _clean_jobs[job_id] = {"status": "running", "sender": sender, "deleted": 0, "owner": owner}
+        _asyncio.create_task(_run_clean_sender_bg(job_id, sender, account_id, owner, permanent))
+        return {"success": True, "job_id": job_id, "sender": sender, "message": f"Cleaning {sender} in background — you'll get a notification when done"}
+
+    @router.get("/clean-sender-bg/{job_id}")
+    async def clean_sender_bg_status(job_id: str, owner: str = Depends(require_owner)):
+        """Poll status of a background clean-sender job."""
+        job = _clean_jobs.get(job_id)
+        if not job or job.get("owner") != owner:
+            return {"status": "not_found"}
+        return {"status": job["status"], "deleted": job.get("deleted", 0), "sender": job.get("sender", "")}
+
+    @router.post("/unsubscribe/{uid}")
+    async def auto_unsubscribe(
+        uid: str,
+        folder: str = Query("INBOX"),
+        account_id: str | None = Query(None),
+        owner: str = Depends(require_owner),
+    ):
+        """Attempt to auto-unsubscribe from a mailing list email.
+
+        Priority order:
+        1. List-Unsubscribe-Post header (RFC 8058 one-click POST)
+        2. HTTP URL in List-Unsubscribe header (GET)
+        3. First unsubscribe link found in the email body (GET)
+        """
+        import re as _re
+        import httpx as _httpx
+        from html.parser import HTMLParser as _HTMLParser
+
+        if account_id:
+            _assert_owns_account(account_id, owner)
+
+        class _LinkParser(_HTMLParser):
+            def __init__(self):
+                super().__init__()
+                self.links = []
+            def handle_starttag(self, tag, attrs):
+                if tag != "a":
+                    return
+                href = dict(attrs).get("href", "") or ""
+                if _re.search(r"unsub|opt.?out|email.pref|manage.pref|remove|mailing", href, _re.I):
+                    self.links.append(href)
+
+        try:
+            with _imap(account_id, owner=owner) as conn:
+                conn.select(_q(folder), readonly=True)
+                status, msg_data = _imap_uid_fetch(conn, uid, "(BODY.PEEK[])")
+                if status != "OK" or not msg_data or not msg_data[0][1]:
+                    return {"success": False, "error": "Email not found"}
+                raw = msg_data[0][1]
+
+            msg = email_mod.message_from_bytes(raw)
+            unsub_header = msg.get("List-Unsubscribe", "")
+            unsub_post = msg.get("List-Unsubscribe-Post", "")
+
+            # Extract URLs and mailto from List-Unsubscribe header
+            # Format: <https://...>, <mailto:...>
+            header_urls = _re.findall(r"<(https?://[^>]+)>", unsub_header)
+            header_mailto = _re.findall(r"<(mailto:[^>]+)>", unsub_header)
+
+            # Method 1: RFC 8058 one-click POST — the only method that's truly
+            # automatic (no landing page, no human confirmation step by spec).
+            # Many senders block/reject these server-side requests (bot
+            # detection, missing browser context) — a non-2xx response means
+            # the unsubscribe did NOT actually happen, so report it as such
+            # rather than blindly trusting that the POST was sent.
+            if unsub_post and header_urls:
+                url = header_urls[0]
+                try:
+                    async with _httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
+                        resp = await client.post(url, data="List-Unsubscribe=One-Click",
+                                                  headers={"Content-Type": "application/x-www-form-urlencoded"})
+                    if 200 <= resp.status_code < 300:
+                        return {"success": True, "method": "one-click-post", "url": url,
+                                "status": resp.status_code,
+                                "message": f"One-click unsubscribe confirmed (HTTP {resp.status_code})"}
+                    logger.warning(f"RFC8058 unsubscribe POST rejected for uid={uid}: HTTP {resp.status_code}")
+                    # Fall through — let the user open the link in a browser instead.
+                except Exception as e:
+                    logger.warning(f"RFC8058 unsubscribe POST failed for uid={uid}: {e}")
+                    # Fall through.
+
+            # Methods 2-4: anything that lands on a web page often needs a human
+            # to click "confirm"/"yes unsubscribe me" — a server-side fetch just
+            # downloads HTML without completing it (and many sites block bot
+            # requests outright, like academia.edu returning 403). Hand the URL
+            # back to the frontend to open in a real browser tab, same as the
+            # familiar manual-unsubscribe flow.
+            if header_urls:
+                url = header_urls[0]
+                return {"success": True, "method": "open-link", "url": url,
+                        "open_in_browser": True,
+                        "message": "Opening unsubscribe page…"}
+
+            if header_mailto:
+                return {"success": False, "method": "mailto", "url": header_mailto[0],
+                        "message": "Unsubscribe requires sending an email — use the mailto link",
+                        "requires_action": True}
+
+            body_html = _extract_html(msg)
+            if body_html:
+                parser = _LinkParser()
+                parser.feed(body_html)
+                if parser.links:
+                    url = parser.links[0]
+                    return {"success": True, "method": "open-link", "url": url,
+                            "open_in_browser": True,
+                            "message": "Opening unsubscribe page…"}
+
+            return {"success": False, "method": None, "message": "No unsubscribe link found in this email"}
+
+        except Exception as e:
+            logger.error(f"auto_unsubscribe failed uid={uid}: {e}")
+            return {"success": False, "error": "Mail operation failed"}
+
     @router.delete("/odysseus/reminders")
     async def delete_odysseus_reminder_emails(
         account_id: str | None = Query(None),

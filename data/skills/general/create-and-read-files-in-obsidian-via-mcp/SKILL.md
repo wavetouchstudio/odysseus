@@ -4,12 +4,11 @@ description: Create and read markdown files in an Obsidian vault using obsidian_
 version: 2.0.0
 category: general
 tags: [obsidian, mcp, filecreation, automation]
-status: active
+status: published
 confidence: 0.97
 source: corrected
 owner: "deadlyjrmint@gmail.com"
 created: "2026-06-05T01:34:19Z"
-updated: "2026-06-06"
 ---
 
 ## When to Use
@@ -18,23 +17,8 @@ Add or retrieve a markdown file in an Obsidian vault using MCP tools.
 
 ## Procedure
 
-1. To create a new file, call `obsidian_append_content` with the target path and content. If the file does not exist, appending creates it automatically.
-
-```
-obsidian_append_content(
-  filepath="TestingArea/2026-06-04_interactable-ui_blueprint.md",
-  content="Your markdown text here"
-)
-```
-
-2. To read a file back, call `obsidian_get_file_contents` with the same path:
-
-```
-obsidian_get_file_contents(
-  filepath="TestingArea/2026-06-04_interactable-ui_blueprint.md"
-)
-```
-
+1. To create a new file, call `obsidian_append_content` with the target path and content. If the file does not exist, appending creates it automatically. ``` obsidian_append_content( filepath="TestingArea/2026-06-04_interactable-ui_blueprint.md", content="Your markdown text here" ) ```
+2. To read a file back, call `obsidian_get_file_contents` with the same path: ``` obsidian_get_file_contents( filepath="TestingArea/2026-06-04_interactable-ui_blueprint.md" ) ```
 3. Confirm the returned content matches what was written.
 
 ## Pitfalls

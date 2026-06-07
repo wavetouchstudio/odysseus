@@ -1,11 +1,12 @@
 ---
 name: clean-chat-history
 description: Review and archive or delete old chat sessions while preserving pinned (starred) ones
+version: 1.0.0
 category: general
 status: published
-confidence: high
+confidence: 0.95
 source: manual
-owner: null
+owner: "deadlyjrmint@gmail.com"
 created: 2026-06-06
 ---
 
@@ -18,8 +19,6 @@ created: 2026-06-06
 # Clean Chat History
 
 Pinned (starred) sessions are protected — never archive or delete them. All other sessions are candidates for cleanup based on age, length, and relevance.
-
-## How
 
 1. **List all sessions**
    ```
@@ -44,13 +43,9 @@ Pinned (starred) sessions are protected — never archive or delete them. All ot
 5. **Skip pinned sessions unconditionally**
    A session with `is_important: true` (the ★ star in the UI) must never be archived or deleted, even if it looks old or short.
 
-## Rules
-
 - Always list and review before acting — never blindly archive everything old
 - Pinned = protected, no exceptions
 - Archive before delete — give the user a recovery window
 - After cleanup, offer to run "Format to Editor" on important sessions before archiving them, so the content is preserved as a document
-
-## Pinning reminder
 
 Users can pin a session by clicking the ★ icon in the session sidebar or using ⋯ → Favorite. Pinned sessions appear with a bookmark indicator and are excluded from all bulk cleanup operations.

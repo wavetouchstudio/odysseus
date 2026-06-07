@@ -1,25 +1,24 @@
 ---
 name: consolidate-memories
-description: Review and merge redundant, outdated, or overlapping memories into clean authoritative entries
+description: "Review and merge redundant, outdated, or overlapping memories into clean authoritative entries"
+version: 1.0.0
 category: general
 status: published
-confidence: high
+confidence: 0.95
 source: manual
-owner: null
+owner: "deadlyjrmint@gmail.com"
 created: 2026-06-06
 ---
 
-# Consolidate Memories
-
-Use this skill when memories have grown noisy — duplicates, contradictions, stale entries, or many entries that say roughly the same thing.
-
-## When to use
+## When to Use
 
 - User says "clean up memories" or "consolidate memories"
 - You notice multiple memories covering the same topic with overlapping content
 - Memories contain outdated facts that conflict with newer ones
 
-## How
+# Consolidate Memories
+
+Use this skill when memories have grown noisy — duplicates, contradictions, stale entries, or many entries that say roughly the same thing.
 
 1. **List all memories**
    ```
@@ -46,14 +45,10 @@ Use this skill when memories have grown noisy — duplicates, contradictions, st
 
 5. **Repeat** until each topic has exactly one entry.
 
-## Rules
-
 - Never delete an entry without first saving its unique facts into the merged version
 - If two entries contradict each other, keep the newer/more specific one and note the conflict was resolved
 - Pinned entries (seed memories) stay pinned in the merged result
 - Do not merge entries from completely different topics just to reduce count — only merge when there is genuine overlap
-
-## Example
 
 Before:
 - "User prefers concise replies"

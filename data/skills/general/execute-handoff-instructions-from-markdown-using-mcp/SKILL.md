@@ -4,12 +4,11 @@ description: Execute handoff instructions from an Obsidian markdown file using a
 version: 2.0.0
 category: general
 tags: [obsidian, mcp, markdown, automation, handoff]
-status: active
+status: published
 confidence: 0.85
 source: corrected
 owner: "deadlyjrmint@gmail.com"
 created: "2026-06-04T23:58:15Z"
-updated: "2026-06-06"
 ---
 
 ## When to Use
@@ -20,15 +19,7 @@ Apply the actions described in an Obsidian handoff markdown file to the vault (e
 
 1. Read the handoff file: `obsidian_get_file_contents(filepath="AI/obsidian_handoff.md")`
 2. Parse the file to identify each action block: the operation (append), the target file path, and the content to write.
-3. For each action, execute the operation using `obsidian_append_content`:
-
-```
-obsidian_append_content(
-  filepath="TARGET_FILE",
-  content="CONTENT_FROM_HANDOFF"
-)
-```
-
+3. For each action, execute the operation using `obsidian_append_content`: ``` obsidian_append_content( filepath="TARGET_FILE", content="CONTENT_FROM_HANDOFF" ) ```
 4. Read each target file back to confirm the content landed: `obsidian_get_file_contents(filepath="TARGET_FILE")`
 
 ## Pitfalls

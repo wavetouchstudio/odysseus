@@ -4,8 +4,8 @@ description: contact-subagent
 version: 1.0.0
 category: general
 tags: [subagent, orchestration, mcp, obsidian, unreal, dispatch, windows, shell]
-status: draft
-confidence: 0.8
+status: published
+confidence: 0.95
 source: user
 owner: "deadlyjrmint@gmail.com"
 created: "2026-06-06T19:24:45Z"

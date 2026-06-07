@@ -67,10 +67,23 @@ from src.app_helpers import abs_join
 from starlette.responses import RedirectResponse
 
 # ========= LOGGING =========
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-)
+class _EmailHighlightFormatter(logging.Formatter):
+    """Wraps log lines from email-related loggers in ANSI blue so they jump
+    out visually while scanning a busy console (per user request — there's a
+    lot of LLM/HTTP noise between email events)."""
+    _BLUE = "\033[34m"
+    _RESET = "\033[0m"
+
+    def format(self, record: logging.LogRecord) -> str:
+        line = super().format(record)
+        if record.name.startswith("routes.email"):
+            return f"{self._BLUE}{line}{self._RESET}"
+        return line
+
+
+_log_handler = logging.StreamHandler()
+_log_handler.setFormatter(_EmailHighlightFormatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+logging.basicConfig(level=logging.INFO, handlers=[_log_handler])
 logger = logging.getLogger(__name__)
 
 # ========= APP =========

@@ -1,0 +1,123 @@
+#!/usr/bin/env python
+"""Structured MCP dispatch — maps [server] verb args to subagent tool calls.
+
+Usage:
+  python scripts/odysseus-dispatch "[obsidian] read TestingArea/bacon.md"
+  python scripts/odysseus-dispatch "[obsidian] append TestingArea/notes.md | # Heading\n\nContent"
+  python scripts/odysseus-dispatch "[obsidian] search bacon"
+  python scripts/odysseus-dispatch "[obsidian] list TestingArea/"
+  python scripts/odysseus-dispatch "[obsidian] listvault"
+  python scripts/odysseus-dispatch "[unreal] exec | import unreal; print('hello')"
+  python scripts/odysseus-dispatch "[unreal] actors LLM"
+  echo "[obsidian] read TestingArea/bacon.md" | python scripts/odysseus-dispatch
+"""
+
+import sys, json, re, os
+import urllib.request
+
+SUBAGENT_URL = os.getenv("SUBAGENT_URL", "http://localhost:7000/api/subagent")
+SUBAGENT_KEY = os.getenv("SUBAGENT_SECRET", "ody-sub-7f3k9x2mQpLvNwBt")
+DEFAULT_MODEL = "gpt-oss:20b"
+
+DISPATCH = {
+    ("obsidian", "read"): (
+        "obsidian_get_file_contents",
+        lambda a: f'Call obsidian_get_file_contents with filepath="{a[0]}" and return the full file content.',
+    ),
+    ("obsidian", "append"): (
+        "obsidian_append_content",
+        lambda a: f'Call obsidian_append_content with filepath="{a[0]}" and content={json.dumps(a[1])}',
+    ),
+    ("obsidian", "search"): (
+        "obsidian_simple_search",
+        lambda a: f'Call obsidian_simple_search with query="{a[0]}" and return all matching files and lines.',
+    ),
+    ("obsidian", "list"): (
+        "obsidian_list_files_in_dir",
+        lambda a: f'Call obsidian_list_files_in_dir with dirpath="{a[0] if a else ""}" and return all filenames.',
+    ),
+    ("obsidian", "listvault"): (
+        "obsidian_list_files_in_vault",
+        lambda a: "Call obsidian_list_files_in_vault and return all files and folders in the vault root.",
+    ),
+    ("unreal", "exec"): (
+        "execute_python_code",
+        lambda a: f'Call execute_python_code with code={json.dumps(a[0])}',
+    ),
+    ("unreal", "actors"): (
+        "get_actors_in_level",
+        lambda a: (
+            f'Call get_actors_in_level and return all actor names that start with "{a[0]}".'
+            if a else
+            "Call get_actors_in_level and return all actor names."
+        ),
+    ),
+}
+
+
+def parse_command(line: str):
+    m = re.match(r"\[(\w+)\]\s+(\w+)\s*(.*)", line.strip(), re.DOTALL)
+    if not m:
+        raise ValueError(f"Cannot parse: {line!r}\nExpected: [server] verb args")
+    server, verb, rest = m.group(1).lower(), m.group(2).lower(), m.group(3)
+    if "|" in rest:
+        left, right = rest.split("|", 1)
+        args = [left.strip(), right.strip()]
+    elif rest.strip():
+        args = [rest.strip()]
+    else:
+        args = []
+    return server, verb, args
+
+
+def call_subagent(tool: str, prompt: str, model: str = DEFAULT_MODEL, timeout: int = 120) -> str:
+    payload = json.dumps({
+        "prompt": prompt,
+        "model": model,
+        "agent": True,
+        "tools": [tool],
+        "timeout": timeout,
+        "system": "You are a tool executor. Call the tool immediately with the exact arguments given. No reasoning, no explanation.",
+    }).encode()
+    req = urllib.request.Request(
+        SUBAGENT_URL, payload,
+        {"Content-Type": "application/json", "X-Subagent-Key": SUBAGENT_KEY},
+    )
+    result = json.loads(urllib.request.urlopen(req, timeout=timeout + 15).read().decode())
+    return result.get("response", "")
+
+
+def main():
+    line = " ".join(sys.argv[1:]) if len(sys.argv) > 1 else sys.stdin.read().strip()
+    if not line:
+        print("Usage: odysseus-dispatch '[server] verb args'", file=sys.stderr)
+        print("Servers: obsidian, unreal", file=sys.stderr)
+        print("Commands:", file=sys.stderr)
+        for s, v in sorted(DISPATCH):
+            print(f"  [{s}] {v}", file=sys.stderr)
+        sys.exit(1)
+
+    try:
+        server, verb, args = parse_command(line)
+    except ValueError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    key = (server, verb)
+    if key not in DISPATCH:
+        available = ", ".join(f"[{s}] {v}" for s, v in sorted(DISPATCH))
+        print(f"Unknown: [{server}] {verb}\nAvailable: {available}", file=sys.stderr)
+        sys.exit(1)
+
+    tool, prompt_fn = DISPATCH[key]
+    try:
+        prompt = prompt_fn(args)
+    except IndexError:
+        print(f"Missing argument for [{server}] {verb}", file=sys.stderr)
+        sys.exit(1)
+
+    print(call_subagent(tool, prompt))
+
+
+if __name__ == "__main__":
+    main()

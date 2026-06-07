@@ -2967,7 +2967,7 @@ async def do_mcp_dispatch(content: str, owner: Optional[str] = None) -> Dict:
 
     payload = {
         "prompt": prompt,
-        "model": "gpt-oss:20b",
+        "model": "gemma4:12b",
         "agent": True,
         "tools": [tool_name],
         "timeout": 90,
