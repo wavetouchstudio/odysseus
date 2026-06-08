@@ -1,12 +1,4 @@
 {
-  "deadlyjrmint@gmail.com::create-and-read-files-in-obsidian-via-mcp": {
-    "uses": 55,
-    "last_used": 1780819754,
-    "audit_verdict": "inconclusive",
-    "audit_by_teacher": false,
-    "audit_worker_model": "deepseek-v4-pro:cloud",
-    "audited_at": 1780704307.0869124
-  },
   "deadlyjrmint@gmail.com::append-tasks-to-a-markdown-file-in-obsidian": {
     "uses": 31,
     "last_used": 1780707768,
@@ -16,8 +8,8 @@
     "audited_at": 1780704307.719743
   },
   "deadlyjrmint@gmail.com::execute-handoff-instructions-from-markdown-using-mcp": {
-    "uses": 5,
-    "last_used": 1780849646,
+    "uses": 14,
+    "last_used": 1780905989,
     "audit_verdict": "inconclusive",
     "audit_by_teacher": false,
     "audit_worker_model": "deepseek-v4-pro:cloud",
@@ -84,8 +76,8 @@
     "audited_at": 1780741201.097293
   },
   "deadlyjrmint@gmail.com::contact-subagent": {
-    "uses": 22,
-    "last_used": 1780866095,
+    "uses": 37,
+    "last_used": 1780905989,
     "necessity": {
       "necessary": true,
       "redundant_with": [
@@ -99,8 +91,8 @@
     "audited_at": 1780798940.2127075
   },
   "deadlyjrmint@gmail.com::clean-chat-history": {
-    "uses": 4,
-    "last_used": 1780853934,
+    "uses": 6,
+    "last_used": 1780936374,
     "necessity": {
       "necessary": true,
       "redundant_with": [],
@@ -144,19 +136,6 @@
     "audit_by_teacher": false,
     "audit_worker_model": "lfm2.5:latest",
     "audited_at": 1780798434.0467927
-  },
-  "deadlyjrmint@gmail.com::obsidian-list-files-in-vault": {
-    "uses": 4,
-    "last_used": 1780849646,
-    "necessity": {
-      "necessary": false,
-      "redundant_with": [],
-      "reason": "Listing files is a basic operation that can be performed directly with the existing Obsidian tools; this skill adds no unique logic."
-    },
-    "audit_verdict": "pass",
-    "audit_by_teacher": false,
-    "audit_worker_model": "gemma4:12b",
-    "audited_at": 1780819624.7674706
   },
   "deadlyjrmint@gmail.com::read-content-from-a-specific-obsidian-directory": {
     "uses": 0,
@@ -214,11 +193,104 @@
     "audited_at": 1780820989.884866
   },
   "deadlyjrmint@gmail.com::youre-not-getting-it": {
-    "uses": 0,
-    "last_used": null,
+    "uses": 1,
+    "last_used": 1780899565,
     "audit_verdict": "pass",
     "audit_by_teacher": false,
     "audit_worker_model": "gemma4:12b",
     "audited_at": 1780821303.6225607
+  },
+  "deadlyjrmint@gmail.com::delegate-obsidian-content-creation": {
+    "uses": 9,
+    "last_used": 1780905254,
+    "necessity": {
+      "necessary": true,
+      "redundant_with": [],
+      "reason": "This skill captures specific non-obvious procedure: delegating complex markdown-to-obsidian tasks to subagents with explicit instruction requirements (tool usage) and verification steps that other sim"
+    },
+    "audit_verdict": "pass",
+    "audit_by_teacher": false,
+    "audit_worker_model": "qwen3.5:0.8b",
+    "audited_at": 1780905147.354549
+  },
+  "deadlyjrmint@gmail.com::accessing-hidden-mcp-tools-via-subagent-dispatch": {
+    "uses": 10,
+    "last_used": 1780936374,
+    "audit_verdict": "inconclusive",
+    "audit_by_teacher": false,
+    "audit_worker_model": "qwen3.5:0.8b",
+    "audited_at": 1780904826.6915016
+  },
+  "deadlyjrmint@gmail.com::create-files-in-obsidian-using-sub-agent-tool-delegation": {
+    "uses": 2,
+    "last_used": 1780904934,
+    "audit_verdict": "fail",
+    "audit_by_teacher": true,
+    "audit_worker_model": "qwen3.5:0.8b",
+    "audit_teacher_model": "gpt-oss:120b",
+    "audited_at": 1780905115.9953425
+  },
+  "deadlyjrmint@gmail.com::create-subagent-delegation-payload": {
+    "uses": 0,
+    "last_used": null,
+    "necessity": {
+      "necessary": true,
+      "redundant_with": [],
+      "reason": "This skill creates a payload structure for delegating to subagents using tools (like MCP), while `delegate-to-subagent-obsidian-list-files-in-vault` handles actual task execution through agent delegat"
+    },
+    "audit_verdict": "fail",
+    "audit_by_teacher": true,
+    "audit_worker_model": "qwen3.5:0.8b",
+    "audit_teacher_model": "gpt-oss:120b",
+    "audited_at": 1780905430.4265246
+  },
+  "deadlyjrmint@gmail.com::subagent-delegation-for-obsidian-tools": {
+    "uses": 5,
+    "last_used": 1780905759,
+    "audit_verdict": "pass",
+    "audit_by_teacher": false,
+    "audit_worker_model": "qwen3.5:0.8b",
+    "audited_at": 1780905671.5119638
+  },
+  "deadlyjrmint@gmail.com::append-daily-reflections-to-an-obsidian-vault-using-mcp-tool": {
+    "uses": 0,
+    "last_used": null,
+    "necessity": {
+      "necessary": true,
+      "redundant_with": [],
+      "reason": "This skill captures a specific procedure for appending daily reflections to Obsidian vault using MCP tools, which adds value beyond the general 'append-content-to-obsidian-file-via-bash' capability."
+    },
+    "audit_verdict": "inconclusive",
+    "audit_by_teacher": false,
+    "audit_worker_model": "qwen3.5:0.8b",
+    "audited_at": 1780905694.0221064
+  },
+  "deadlyjrmint@gmail.com::append-content-to-obsidian-file-via-bash": {
+    "uses": 0,
+    "last_used": null,
+    "necessity": {
+      "necessary": true,
+      "redundant_with": [],
+      "reason": "This skill captures a non-obvious procedure (Bash script with heredoc syntax) that complements another existing skill rather than duplicating it or being trivial enough for an assistant to do without "
+    },
+    "audit_verdict": "fail",
+    "audit_by_teacher": true,
+    "audit_worker_model": "qwen3.5:0.8b",
+    "audit_teacher_model": "gpt-oss:120b",
+    "audited_at": 1780905769.4661145
+  },
+  "deadlyjrmint@gmail.com::delegate-subagent-call": {
+    "uses": 0,
+    "last_used": null,
+    "necessity": {
+      "necessary": true,
+      "redundant_with": [],
+      "reason": "This skill is specifically for delegating tasks via API endpoints with structured JSON payloads - distinct from execute-handoff-instructions-from-markdown-using-mcp which uses append-only MCP tools an"
+    },
+    "audit_verdict": "fail",
+    "audit_by_teacher": true,
+    "audit_worker_model": "qwen3.5:0.8b",
+    "audit_teacher_model": "gpt-oss:120b",
+    "audited_at": 1780906066.5708306
   }
 }
