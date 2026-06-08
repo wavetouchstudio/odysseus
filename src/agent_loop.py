@@ -1365,6 +1365,7 @@ def _compute_final_metrics(
 _VERIFIER_EFFECTFUL_TOOLS = {
     "create_document", "update_document", "edit_document",
     "bash", "python", "write_file",
+    "delegate-subagent-call",
 }
 _VERIFIER_MAX_ROUNDS = 2  # cap re-verify cycles per turn — never loop forever
 

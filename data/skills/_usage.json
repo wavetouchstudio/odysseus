@@ -8,8 +8,8 @@
     "audited_at": 1780704307.719743
   },
   "deadlyjrmint@gmail.com::execute-handoff-instructions-from-markdown-using-mcp": {
-    "uses": 14,
-    "last_used": 1780905989,
+    "uses": 17,
+    "last_used": 1780955693,
     "audit_verdict": "inconclusive",
     "audit_by_teacher": false,
     "audit_worker_model": "deepseek-v4-pro:cloud",
@@ -76,8 +76,8 @@
     "audited_at": 1780741201.097293
   },
   "deadlyjrmint@gmail.com::contact-subagent": {
-    "uses": 37,
-    "last_used": 1780905989,
+    "uses": 43,
+    "last_used": 1780955693,
     "necessity": {
       "necessary": true,
       "redundant_with": [
@@ -91,8 +91,8 @@
     "audited_at": 1780798940.2127075
   },
   "deadlyjrmint@gmail.com::clean-chat-history": {
-    "uses": 6,
-    "last_used": 1780936374,
+    "uses": 7,
+    "last_used": 1780948097,
     "necessity": {
       "necessary": true,
       "redundant_with": [],
@@ -185,8 +185,8 @@
     "audited_at": 1780820811.4017797
   },
   "deadlyjrmint@gmail.com::qna-time": {
-    "uses": 0,
-    "last_used": null,
+    "uses": 1,
+    "last_used": 1780940636,
     "audit_verdict": "pass",
     "audit_by_teacher": false,
     "audit_worker_model": "gemma4:12b",
@@ -214,8 +214,8 @@
     "audited_at": 1780905147.354549
   },
   "deadlyjrmint@gmail.com::accessing-hidden-mcp-tools-via-subagent-dispatch": {
-    "uses": 10,
-    "last_used": 1780936374,
+    "uses": 15,
+    "last_used": 1780948285,
     "audit_verdict": "inconclusive",
     "audit_by_teacher": false,
     "audit_worker_model": "qwen3.5:0.8b",
@@ -245,8 +245,8 @@
     "audited_at": 1780905430.4265246
   },
   "deadlyjrmint@gmail.com::subagent-delegation-for-obsidian-tools": {
-    "uses": 5,
-    "last_used": 1780905759,
+    "uses": 9,
+    "last_used": 1780955693,
     "audit_verdict": "pass",
     "audit_by_teacher": false,
     "audit_worker_model": "qwen3.5:0.8b",
@@ -292,5 +292,9 @@
     "audit_worker_model": "qwen3.5:0.8b",
     "audit_teacher_model": "gpt-oss:120b",
     "audited_at": 1780906066.5708306
+  },
+  "deadlyjrmint@gmail.com::list-obsidian-vault-files-via-mcp-subagent": {
+    "uses": 2,
+    "last_used": 1780948285
   }
 }

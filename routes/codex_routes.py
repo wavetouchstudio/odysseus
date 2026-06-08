@@ -7,10 +7,13 @@ user data.
 
 import asyncio
 import json
+import os
 import zipfile
 from io import BytesIO
 from pathlib import Path
 from typing import Any
+
+import httpx
 
 from fastapi import APIRouter, BackgroundTasks, Body, HTTPException, Request
 from fastapi.responses import StreamingResponse
@@ -32,6 +35,8 @@ CALENDAR_READ_SCOPES = {"calendar:read", "calendar:write"}
 CALENDAR_WRITE_SCOPES = {"calendar:write"}
 DOCS_READ_SCOPES = {"documents:read", "documents:write"}
 DOCS_WRITE_SCOPES = {"documents:write"}
+OBSIDIAN_READ_SCOPES = {"obsidian:read", "obsidian:write"}
+OBSIDIAN_WRITE_SCOPES = {"obsidian:write"}
 WRITE_ACTIONS = {"add", "create", "new", "save", "remind", "update", "delete", "toggle_item", "remove", "remove_item"}
 
 
@@ -136,6 +141,12 @@ def setup_codex_routes(
                     "read": scoped(COOKBOOK_READ_SCOPES),
                     "launch": scoped(COOKBOOK_LAUNCH_SCOPES),
                     "actions": ["tasks", "servers", "output", "serve", "stop"],
+                },
+                "obsidian": {
+                    "read": scoped(OBSIDIAN_READ_SCOPES),
+                    "write": scoped(OBSIDIAN_WRITE_SCOPES),
+                    "actions": ["list_vault", "read_file", "search", "append_file"],
+                    "available": bool(os.getenv("OBSIDIAN_API_KEY")),
                 },
             },
             "safety": {
@@ -747,6 +758,67 @@ def setup_codex_routes(
         except Exception as exc:
             raise HTTPException(500, f"state write failed: {exc}")
         return {"ok": True, "session_id": sess, "host": host or "local"}
+
+    # ── Obsidian vault endpoints ──────────────────────────────────────────────
+
+    def _obsidian_client() -> tuple[str, dict]:
+        api_key = os.getenv("OBSIDIAN_API_KEY", "")
+        port = os.getenv("OBSIDIAN_PORT", "27123")
+        host = os.getenv("OBSIDIAN_HOST", "127.0.0.1")
+        if not api_key:
+            raise HTTPException(503, "OBSIDIAN_API_KEY not configured")
+        base = f"http://{host}:{port}"
+        headers = {"Authorization": f"Bearer {api_key}", "Accept": "application/json"}
+        return base, headers
+
+    @router.get("/obsidian/vault")
+    async def obsidian_list_vault(request: Request):
+        _scope_owner(request, OBSIDIAN_READ_SCOPES)
+        base, headers = _obsidian_client()
+        async with httpx.AsyncClient(timeout=15) as client:
+            r = await client.get(f"{base}/vault/", headers=headers)
+        if r.status_code != 200:
+            raise HTTPException(r.status_code, r.text)
+        return r.json()
+
+    @router.get("/obsidian/files/{path:path}")
+    async def obsidian_read_file(path: str, request: Request):
+        _scope_owner(request, OBSIDIAN_READ_SCOPES)
+        base, headers = _obsidian_client()
+        hdrs = {**headers, "Accept": "text/markdown, application/json"}
+        async with httpx.AsyncClient(timeout=15) as client:
+            r = await client.get(f"{base}/vault/{path}", headers=hdrs)
+        if r.status_code != 200:
+            raise HTTPException(r.status_code, r.text)
+        return {"path": path, "content": r.text}
+
+    @router.get("/obsidian/search")
+    async def obsidian_search(query: str, request: Request, context_length: int = 100):
+        _scope_owner(request, OBSIDIAN_READ_SCOPES)
+        base, headers = _obsidian_client()
+        async with httpx.AsyncClient(timeout=15) as client:
+            r = await client.post(
+                f"{base}/search/simple/",
+                headers=headers,
+                params={"query": query, "contextLength": context_length},
+            )
+        if r.status_code != 200:
+            raise HTTPException(r.status_code, r.text)
+        return r.json()
+
+    @router.post("/obsidian/files/{path:path}")
+    async def obsidian_append_file(path: str, request: Request, body: dict = Body(...)):
+        _scope_owner(request, OBSIDIAN_WRITE_SCOPES)
+        base, headers = _obsidian_client()
+        content = body.get("content", "")
+        if not content:
+            raise HTTPException(400, "content required")
+        hdrs = {**headers, "Content-Type": "text/markdown"}
+        async with httpx.AsyncClient(timeout=15) as client:
+            r = await client.post(f"{base}/vault/{path}", headers=hdrs, content=content)
+        if r.status_code not in (200, 204):
+            raise HTTPException(r.status_code, r.text)
+        return {"ok": True, "path": path}
 
     return router
 
