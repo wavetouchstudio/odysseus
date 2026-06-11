@@ -8,12 +8,58 @@
     "audited_at": 1780704307.719743
   },
   "deadlyjrmint@gmail.com::execute-handoff-instructions-from-markdown-using-mcp": {
-    "uses": 17,
-    "last_used": 1780955693,
+    "uses": 28,
+    "last_used": 1780990787,
     "audit_verdict": "inconclusive",
     "audit_by_teacher": false,
     "audit_worker_model": "deepseek-v4-pro:cloud",
-    "audited_at": 1780704306.3328435
+    "audited_at": 1780704306.3328435,
+    "events": [
+      {
+        "ts": 1780988695,
+        "session_id": null
+      },
+      {
+        "ts": 1780988791,
+        "session_id": null
+      },
+      {
+        "ts": 1780989098,
+        "session_id": null
+      },
+      {
+        "ts": 1780989227,
+        "session_id": null
+      },
+      {
+        "ts": 1780989317,
+        "session_id": null
+      },
+      {
+        "ts": 1780990026,
+        "session_id": null
+      },
+      {
+        "ts": 1780990121,
+        "session_id": null
+      },
+      {
+        "ts": 1780990365,
+        "session_id": null
+      },
+      {
+        "ts": 1780990610,
+        "session_id": null
+      },
+      {
+        "ts": 1780990667,
+        "session_id": null
+      },
+      {
+        "ts": 1780990787,
+        "session_id": null
+      }
+    ]
   },
   "deadlyjrmint@gmail.com::resolve-obsidian-path-mismatches": {
     "uses": 0,
@@ -91,8 +137,8 @@
     "audited_at": 1780798940.2127075
   },
   "deadlyjrmint@gmail.com::clean-chat-history": {
-    "uses": 7,
-    "last_used": 1780948097,
+    "uses": 23,
+    "last_used": 1781106923,
     "necessity": {
       "necessary": true,
       "redundant_with": [],
@@ -101,7 +147,25 @@
     "audit_verdict": "pass",
     "audit_by_teacher": false,
     "audit_worker_model": "lfm2.5:latest",
-    "audited_at": 1780798309.1487682
+    "audited_at": 1780798309.1487682,
+    "events": [
+      {
+        "ts": 1780984571,
+        "session_id": null
+      },
+      {
+        "ts": 1780987910,
+        "session_id": null
+      },
+      {
+        "ts": 1780991030,
+        "session_id": null
+      },
+      {
+        "ts": 1781106923,
+        "session_id": null
+      }
+    ]
   },
   "deadlyjrmint@gmail.com::write-verify-pair": {
     "uses": 0,
@@ -214,8 +278,8 @@
     "audited_at": 1780905147.354549
   },
   "deadlyjrmint@gmail.com::accessing-hidden-mcp-tools-via-subagent-dispatch": {
-    "uses": 15,
-    "last_used": 1780948285,
+    "uses": 26,
+    "last_used": 1780974571,
     "audit_verdict": "inconclusive",
     "audit_by_teacher": false,
     "audit_worker_model": "qwen3.5:0.8b",
@@ -296,5 +360,139 @@
   "deadlyjrmint@gmail.com::list-obsidian-vault-files-via-mcp-subagent": {
     "uses": 2,
     "last_used": 1780948285
+  },
+  "deadlyjrmint@gmail.com::use-obsidian-mcp-tools": {
+    "uses": 12,
+    "last_used": 1780990786,
+    "events": [
+      {
+        "ts": 1780988695,
+        "session_id": null
+      },
+      {
+        "ts": 1780988791,
+        "session_id": null
+      },
+      {
+        "ts": 1780989098,
+        "session_id": null
+      },
+      {
+        "ts": 1780989227,
+        "session_id": null
+      },
+      {
+        "ts": 1780989317,
+        "session_id": null
+      },
+      {
+        "ts": 1780989541,
+        "session_id": null
+      },
+      {
+        "ts": 1780990025,
+        "session_id": null
+      },
+      {
+        "ts": 1780990365,
+        "session_id": null
+      },
+      {
+        "ts": 1780990610,
+        "session_id": null
+      },
+      {
+        "ts": 1780990614,
+        "session_id": null
+      },
+      {
+        "ts": 1780990667,
+        "session_id": null
+      },
+      {
+        "ts": 1780990786,
+        "session_id": null
+      }
+    ],
+    "necessity": {
+      "necessary": true,
+      "redundant_with": [],
+      "reason": "Captures a specific, non-trivial set of direct vault operations (list/append/search) with hard-won details like path handling and bug workarounds that aren't fully covered by existing skills."
+    },
+    "audit_verdict": "pass",
+    "audit_by_teacher": false,
+    "audit_worker_model": "ministral-3:8b",
+    "audited_at": 1780990984.1572266
+  },
+  "deadlyjrmint@gmail.com::resolve-path-ambiguity": {
+    "uses": 1,
+    "last_used": 1780990667,
+    "necessity": {
+      "necessary": true,
+      "redundant_with": [],
+      "reason": "Resolving ambiguous paths is a critical but non-trivial task requiring explicit verification (e.g., listing contents) and context-aware disambiguation\u2014no generic skill in the library covers this exact"
+    },
+    "events": [
+      {
+        "ts": 1780990667,
+        "session_id": null
+      }
+    ],
+    "audit_verdict": "pass",
+    "audit_by_teacher": false,
+    "audit_worker_model": "ministral-3:8b",
+    "audited_at": 1780990725.141285
+  },
+  "deadlyjrmint@gmail.com::list-obsidian-vault-files-with-mcp": {
+    "uses": 0,
+    "last_used": null,
+    "necessity": {
+      "necessary": false,
+      "redundant_with": [],
+      "reason": "The procedure is a specific case of 'list files' in Obsidian via MCP, which is already covered by the broader 'use-obsidian-mcp-tools' skill."
+    },
+    "audit_verdict": "skipped",
+    "audit_by_teacher": false,
+    "audit_worker_model": "ministral-3:8b",
+    "audited_at": 1780990733.7288074
+  },
+  "deadlyjrmint@gmail.com::search-obsidian-vault-using-mcp-tools": {
+    "uses": 0,
+    "last_used": null,
+    "necessity": {
+      "necessary": false,
+      "redundant_with": [],
+      "reason": "The procedure is a subset of 'use-obsidian-mcp-tools,' which already covers direct MCP tool invocation for searching Obsidian vaults."
+    },
+    "audit_verdict": "skipped",
+    "audit_by_teacher": false,
+    "audit_worker_model": "ministral-3:8b",
+    "audited_at": 1780990743.7335727
+  },
+  "deadlyjrmint@gmail.com::synthesize-vault-data-into-stylized-markdown-profiles": {
+    "uses": 0,
+    "last_used": null,
+    "necessity": {
+      "necessary": false,
+      "redundant_with": [],
+      "reason": "Overlaps with an existing skill that already handles Obsidian note synthesis into structured Markdown profiles, including search/read/append workflows."
+    },
+    "audit_verdict": "skipped",
+    "audit_by_teacher": false,
+    "audit_worker_model": "ministral-3:8b",
+    "audited_at": 1780990752.473802
+  },
+  "deadlyjrmint@gmail.com::synthesize-obsidian-notes-into-a-structured-markdown-profile": {
+    "uses": 0,
+    "last_used": null,
+    "necessity": {
+      "necessary": false,
+      "redundant_with": [],
+      "reason": "Overlaps with an existing skill that explicitly handles vault data synthesis into structured Markdown profiles."
+    },
+    "audit_verdict": "skipped",
+    "audit_by_teacher": false,
+    "audit_worker_model": "ministral-3:8b",
+    "audited_at": 1780990761.527405
   }
 }

@@ -1260,6 +1260,13 @@ def setup_skills_routes(skills_manager: SkillsManager) -> APIRouter:
             raise HTTPException(404, "Skill source unavailable (legacy entry?)")
         return {"name": match.get("name"), "markdown": md}
 
+    @router.get("/{skill_id}/history")
+    async def get_skill_use_history(request: Request, skill_id: str, limit: int = 20):
+        """Return timestamped use events for a skill (most recent first)."""
+        user = _owner(request)
+        events = skills_manager.get_use_history(skill_id, owner=user, limit=min(limit, 100))
+        return {"name": skill_id, "events": list(reversed(events))}
+
     @router.post("/{skill_id}/test")
     async def test_skill(request: Request, skill_id: str):
         """Kick off a background skill test (agent run + LLM judge). Returns

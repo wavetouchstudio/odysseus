@@ -423,6 +423,7 @@ def setup_chat_routes(
                 _tool_intent.reason,
             )
         active_doc_id = form_data.get("active_doc_id", "").strip()
+        open_doc_ids_raw = form_data.get("open_doc_ids", "").strip()
         logger.info(f"[doc-inject] chat_mode={chat_mode}, active_doc_id={active_doc_id!r}")
 
         try:
@@ -582,8 +583,34 @@ def setup_chat_routes(
                 logger.info(f"[doc-inject] no active doc for session {session}")
             if active_doc:
                 _doc_db.expunge(active_doc)
+
+            # Other documents open as tabs in the editor (multi-doc workflows,
+            # e.g. writing a small codebase across several files). Scoped the
+            # same way as active_doc so a user can't pull in another user's docs.
+            open_documents = []
+            if open_doc_ids_raw:
+                try:
+                    _open_ids = [str(x) for x in json.loads(open_doc_ids_raw) if x]
+                except Exception:
+                    _open_ids = []
+                _active_id = active_doc.id if active_doc else None
+                _other_ids = [oid for oid in _open_ids if oid != _active_id]
+                if _other_ids:
+                    _open_q = _doc_db.query(DBDocument).filter(DBDocument.id.in_(_other_ids))
+                    for _od in _owner_session_filter(_open_q, ctx.user).all():
+                        _od_session = _od.session_id
+                        _od_owner = getattr(_od, "owner", None)
+                        if _od_owner and ctx.user and _od_owner != ctx.user:
+                            continue
+                        if _od_session and _od_session != session:
+                            continue
+                        _doc_db.expunge(_od)
+                        open_documents.append(_od)
+                if open_documents:
+                    logger.info(f"[doc-inject] {len(open_documents)} additional open document(s): {[d.title for d in open_documents]}")
         except Exception as e:
             logger.warning(f"Failed to query active document: {e}")
+            open_documents = []
         finally:
             _doc_db.close()
 
@@ -1010,6 +1037,7 @@ def setup_chat_routes(
                         max_rounds=_max_rounds,
                         context_length=ctx.context_length,
                         active_document=active_doc,
+                        open_documents=open_documents,
                         session_id=session,
                         disabled_tools=disabled_tools if disabled_tools else None,
                         owner=_user,

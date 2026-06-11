@@ -197,6 +197,7 @@ FUNCTION_TOOL_SCHEMAS = [
             "parameters": {
                 "type": "object",
                 "properties": {
+                    "doc_id": {"type": "string", "description": "Optional. Target a specific document by id when multiple documents are open (see OTHER OPEN DOCUMENTS context). Omit to edit the active document."},
                     "edits": {
                         "type": "array",
                         "description": "List of find/replace edits (first match only per edit)",
@@ -222,6 +223,7 @@ FUNCTION_TOOL_SCHEMAS = [
             "parameters": {
                 "type": "object",
                 "properties": {
+                    "doc_id": {"type": "string", "description": "Optional. Target a specific document by id when multiple documents are open (see OTHER OPEN DOCUMENTS context). Omit to target the active document."},
                     "suggestions": {
                         "type": "array",
                         "description": "List of suggested changes with reasons",
@@ -248,6 +250,7 @@ FUNCTION_TOOL_SCHEMAS = [
             "parameters": {
                 "type": "object",
                 "properties": {
+                    "doc_id": {"type": "string", "description": "Optional. Target a specific document by id when multiple documents are open (see OTHER OPEN DOCUMENTS context). Omit to target the active document."},
                     "content": {"type": "string", "description": "Complete new document content"}
                 },
                 "required": ["content"]
@@ -1244,6 +1247,8 @@ def function_call_to_tool_block(name: str, arguments: str) -> Optional[ToolBlock
                 f'<<<FIND>>>\n{edit.get("find", "")}\n<<<REPLACE>>>\n{edit.get("replace", "")}\n<<<END>>>'
             )
         content = "\n".join(blocks)
+        if args.get("doc_id"):
+            content = f'@doc:{args["doc_id"]}\n' + content
     elif tool_type == "suggest_document":
         blocks = []
         for s in args.get("suggestions", []):
@@ -1251,8 +1256,12 @@ def function_call_to_tool_block(name: str, arguments: str) -> Optional[ToolBlock
                 f'<<<FIND>>>\n{s.get("find", "")}\n<<<SUGGEST>>>\n{s.get("replace", "")}\n<<<REASON>>>\n{s.get("reason", "")}\n<<<END>>>'
             )
         content = "\n".join(blocks)
+        if args.get("doc_id"):
+            content = f'@doc:{args["doc_id"]}\n' + content
     elif tool_type == "update_document":
         content = args.get("content", "")
+        if args.get("doc_id"):
+            content = f'@doc:{args["doc_id"]}\n' + content
     elif tool_type == "search_chats":
         content = args.get("query", "")
     elif tool_type == "chat_with_model":

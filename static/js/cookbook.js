@@ -161,7 +161,15 @@ function _getPort(hostOrTask) {
 
 /** Get platform for a given host (or task object). Returns 'windows', 'termux', 'linux', or '' */
 export function _getPlatform(hostOrTask) {
-  if (!hostOrTask) return _envState.platform || '';
+  if (!hostOrTask) {
+    // Local target: _envState.platform is '' (it's only populated for remote
+    // servers from the saved server list). Fall back to the hwfit hardware
+    // probe's `system.platform`, which IS 'windows' for a local Windows host
+    // — without this, _isWindows() always returned false locally and pip
+    // install commands picked up the Linux-only `--break-system-packages`
+    // flag, which older Windows pip rejects with "no such option".
+    return _envState.platform || _hwfitCache?.system?.platform || '';
+  }
   if (typeof hostOrTask === 'object') return hostOrTask.platform || _getPlatform(hostOrTask.remoteHost);
   const srv = _envState.servers.find(s => s.host === hostOrTask);
   return srv?.platform || '';

@@ -766,7 +766,34 @@ function renderSkillsList() {
     rightGroup.className = 'doclib-action-group';
     const btnRow = document.createElement('div');
     btnRow.className = 'doclib-action-btn-row';
+    const histBtn = document.createElement('button');
+    histBtn.className = 'doclib-card-text-btn doclib-card-action-btn';
+    histBtn.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>History';
+    histBtn.title = `View use history (${uses} total uses)`;
+    histBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      try {
+        const res = await fetch(`${API}/api/skills/${encodeURIComponent(name)}/history?limit=20`);
+        const data = await res.json();
+        const events = (data.events || []).slice().reverse();
+        if (!events.length) { uiModule.showToast('No usage history yet'); return; }
+        const lines = events.map(ev => {
+          const d = new Date(ev.ts * 1000);
+          return `${d.toLocaleString()} ${ev.session_id ? '(session: ' + ev.session_id.slice(0, 8) + ')' : ''}`;
+        });
+        const pre = card.querySelector('.skill-md-pre');
+        if (pre) {
+          pre._savedContent = pre._savedContent ?? pre.textContent;
+          pre.textContent = `Use history (${events.length} shown):\n\n` + lines.join('\n');
+          histBtn.textContent = '← Back';
+          histBtn.onclick = (ev2) => { ev2.stopPropagation(); pre.textContent = pre._savedContent ?? ''; histBtn.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>History'; histBtn.onclick = null; histBtn.addEventListener('click', histBtn._origClick); };
+          histBtn._origClick = histBtn.onclick;
+        }
+      } catch (err) { uiModule.showError('History load failed: ' + err.message); }
+    });
+
     btnRow.appendChild(testBtn);
+    btnRow.appendChild(histBtn);
     btnRow.appendChild(editBtn);
     btnRow.appendChild(delBtn);
     rightGroup.appendChild(btnRow);

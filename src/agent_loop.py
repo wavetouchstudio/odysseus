@@ -267,13 +267,13 @@ old text to find
 new replacement text
 <<<END>>>
 ```
-Edit a document OPEN IN THE EDITOR PANEL — NOT a file on disk. For files on disk (home folder, project files, any real path like ~/sweden.txt) use `edit_file` instead. Find exact text and replace it. Multiple FIND/REPLACE blocks per call OK. Use for any edit smaller than a full rewrite. **If a document is open in the editor, treat it as the user's current context: don't ask which file they mean, and don't create a new one — just edit_document the active one.** Do NOT re-send the whole file with update_document for small changes.""",
+Edit a document OPEN IN THE EDITOR PANEL — NOT a file on disk. For files on disk (home folder, project files, any real path like ~/sweden.txt) use `edit_file` instead. Find exact text and replace it. Multiple FIND/REPLACE blocks per call OK. Use for any edit smaller than a full rewrite. **If a document is open in the editor, treat it as the user's current context: don't ask which file they mean, and don't create a new one — just edit_document the active one.** Do NOT re-send the whole file with update_document for small changes. If OTHER OPEN DOCUMENTS are listed in context and you need to edit one of THOSE instead of the active document, put `@doc:<doc_id>` as the first line of the block (before <<<FIND>>>).""",
 
     "update_document": """\
 ```update_document
 <entire new content>
 ```
-Replace the ENTIRE active document. ONLY use when you're genuinely rewriting more than half of it from scratch. For any smaller change, use edit_document — echoing back the whole file for a two-line edit wastes tokens and is hard to review.""",
+Replace the ENTIRE active document. ONLY use when you're genuinely rewriting more than half of it from scratch. For any smaller change, use edit_document — echoing back the whole file for a two-line edit wastes tokens and is hard to review. If OTHER OPEN DOCUMENTS are listed in context and you need to rewrite one of THOSE instead of the active document, put `@doc:<doc_id>` as the first line of the block (before the new content).""",
 
     "suggest_document": """\
 ```suggest_document
@@ -290,18 +290,18 @@ Suggest changes with explanations (for review/feedback requests).""",
     "generate_image": """\
 ```generate_image
 <prompt>
-<model>
+<model or [Model: checkpoint_name] to swap SD model>
 <size>
 <quality>
 ```
-Generate an image. Line 1 = description, line 2 = model name, line 3 = WxH (e.g. 1024x1024), line 4 = quality.""",
+Generate an image. Line 1 = description, line 2 = model name or `[Model: checkpoint_name]` to switch Stable Diffusion checkpoint before generating, line 3 = WxH (e.g. 1024x1024), line 4 = quality (low/medium/high).""",
 
     "chat_with_model": "- ```chat_with_model``` — Ask a DIFFERENT AI model and relay its answer. Line 1 = model name (or 'model@endpoint'), rest = your message. Use when the user says 'ask <model>', 'what does <model> think', or wants to compare/their answer from another model.",
     "ask_teacher": "- ```ask_teacher``` — Escalate a hard question to a more capable model. Line 1 = model name or 'auto', rest = the question. Use when stuck or need expert knowledge.",
     "list_models": "- ```list_models``` — Show all available AI models across all endpoints. Use when user asks what models are available.",
     "manage_session": "- ```manage_session``` — Rename, archive, delete, fork, switch, or `list` chats (the UI calls them 'chats'; 'session' is internal). Line 1 = action (list/switch/rename/archive/unarchive/delete/important/unimportant/truncate/fork), Line 2 = exact chat id from `list_sessions` (or `current` where supported). For delete/archive/truncate, always list first and reuse the exact id; never invent placeholder ids. `switch`/`open` returns a clickable anchor link the user can tap to open the chat — use for \"open my X chat\".",
     "manage_memory": "- ```manage_memory``` — Manage the user's persistent memory (facts, identity, preferences, context that persists across chats). Line 1 = action (list/add/edit/delete/search), rest = content. Use when user says 'remember this', states identity facts like 'my name is <name>' / 'call me <name>' / 'I live in <place>', or asks about stored memories.",
-    "manage_skills": "- ```manage_skills``` — Skill registry (SKILL.md format). Args (JSON): {\"action\": \"list|view|view_ref|search|add|edit|patch|publish|delete\", ...}. `list` returns the index of available skills (published + teacher-escalation drafts); `view name=foo` fetches the full SKILL.md; `view_ref name=foo path=...` loads a reference file under the skill directory. For `add`, provide an explicit kebab-case `name` and only report the exact returned name, because storage may normalize or dedupe it. Use this BEFORE doing domain work — there may already be a procedure (published or draft) that prescribes the correct steps. Drafts written by the teacher loop are authoritative guidance even though they're not yet published.",
+    "manage_skills": "- ```manage_skills``` — Skill registry (SKILL.md format). Args (JSON): {\"action\": \"list|view|view_ref|search|add|edit|patch|publish|delete\", ...}. `list` returns published skills only; `view name=foo` fetches the full SKILL.md; `view_ref name=foo path=...` loads a reference file under the skill directory. For `add`, provide an explicit kebab-case `name` and only report the exact returned name, because storage may normalize or dedupe it. Use this BEFORE doing domain work — there may already be a published procedure that prescribes the correct steps. Only published skills are injected; drafts are user-reviewed before publishing.",
     "manage_tasks": "- ```manage_tasks``` — Create and manage scheduled background tasks (recurring AI jobs). Args (JSON): {\"action\": \"list|create|edit|delete|pause|resume|run\", ...}",
     "manage_endpoints": "- ```manage_endpoints``` — Add, remove, or configure AI model API endpoints. Args (JSON): {\"action\": \"list|add|delete|enable|disable\", ...}. Use when user wants to add a new AI provider.",
     "manage_mcp": "- ```manage_mcp``` — Manage MCP (Model Context Protocol) tool servers — external tools that extend your capabilities. Args (JSON): {\"action\": \"list|add|delete|reconnect|list_tools\", ...}",
@@ -683,6 +683,7 @@ def _build_system_prompt(
     mcp_disabled_map: Optional[Dict[str, set]] = None,
     compact: bool = False,
     owner: Optional[str] = None,
+    open_documents: Optional[List] = None,
 ) -> List[Dict]:
     """Build agent system prompt, inject MCP/document context, merge consecutive system msgs."""
     global _cached_base_prompt, _cached_base_prompt_key
@@ -858,6 +859,34 @@ def _build_system_prompt(
             )
     else:
         set_active_document(None)
+
+    # Other documents open as tabs in the editor (not the active one). Lets
+    # the model work across multiple files at once — e.g. writing a small
+    # codebase as several open documents — by targeting edits with an
+    # `@doc:<id>` directive on the first line of edit_document/update_document/
+    # suggest_document blocks.
+    _open_docs_message = None
+    if open_documents:
+        _parts = []
+        for _od in open_documents:
+            _od_content = _od.current_content or ""
+            if len(_od_content) > 4000:
+                _od_content = _od_content[:4000] + "\n... [truncated]"
+            _parts.append(
+                f'Title: "{_od.title}" | Language: {_od.language or "text"} | doc_id: {_od.id}\n'
+                f'```\n{_od_content}\n```'
+            )
+        _open_docs_ctx = (
+            f'OTHER OPEN DOCUMENTS (open as tabs in the editor, not the active one)\n\n'
+            + "\n\n".join(_parts) +
+            f'\n\nThese are separate files also open in the editor — useful when writing or '
+            f'editing a multi-file codebase. To target one of these with edit_document, '
+            f'update_document, or suggest_document, put `@doc:<doc_id>` as the FIRST line '
+            f'of the block content (before any FIND/REPLACE), using the doc_id shown above. '
+            f'Without an `@doc:` directive, those tools target the ACTIVE DOCUMENT instead.'
+        )
+        _open_docs_message = untrusted_context_message("other open documents", _open_docs_ctx)
+        _open_docs_message["_protected"] = True
 
     # Inject writing style for any email writing path. This is deliberately
     # broader than read/list: models may compose via send_email, reply_to_email,
@@ -1065,6 +1094,9 @@ def _build_system_prompt(
     if _doc_message:
         merged.insert(last_user_idx, _doc_message)
         last_user_idx += 1  # the document message is now at last_user_idx
+    if _open_docs_message:
+        merged.insert(last_user_idx, _open_docs_message)
+        last_user_idx += 1
     if _skills_message:
         merged.insert(last_user_idx, _skills_message)
 
@@ -1365,7 +1397,6 @@ def _compute_final_metrics(
 _VERIFIER_EFFECTFUL_TOOLS = {
     "create_document", "update_document", "edit_document",
     "bash", "python", "write_file",
-    "delegate-subagent-call",
 }
 _VERIFIER_MAX_ROUNDS = 2  # cap re-verify cycles per turn — never loop forever
 
@@ -1474,6 +1505,7 @@ async def stream_agent_loop(
     max_tool_calls: int = 0,
     context_length: int = 0,
     active_document=None,
+    open_documents=None,
     session_id: Optional[str] = None,
     disabled_tools: Optional[Set[str]] = None,
     owner: Optional[str] = None,
@@ -1567,7 +1599,7 @@ async def stream_agent_loop(
     # If a document is open the model needs the editing tools available
     # regardless of which selection path (RAG, keyword, caller-provided) ran
     # or what keywords were in the latest user message.
-    if _relevant_tools is not None and active_document is not None:
+    if _relevant_tools is not None and (active_document is not None or open_documents):
         _relevant_tools.update({"edit_document", "update_document", "suggest_document"})
 
     prep_timings["tool_selection"] = time.time() - _t1
@@ -1645,6 +1677,7 @@ async def stream_agent_loop(
         mcp_disabled_map=_mcp_disabled_map,
         compact=_is_api_model,
         owner=owner,
+        open_documents=open_documents,
     )
     if workspace:
         # PREPEND (not append) so it dominates the large base prompt — appended
@@ -1756,7 +1789,9 @@ async def stream_agent_loop(
     # an action without emitting the tool call. Capped to prevent a model
     # that *can't* call the tool from looping forever.
     _intent_nudge_count = 0
-    _MAX_INTENT_NUDGES = 2
+    # Raised from 2 → 4: weak models sometimes need more encouragement before
+    # they actually emit a tool call instead of narrating the plan again.
+    _MAX_INTENT_NUDGES = 4
 
     # "I said I would, then didn't" detector. The pattern that breaks debug
     # loops on weak models (deepseek-v4-flash mid-2026): the model writes
@@ -1766,11 +1801,13 @@ async def stream_agent_loop(
     # tool, so we don't nudge on harmless transitional text like "let me
     # know what you think".
     _INTENT_RE = re.compile(
-        r"(?:^|\n)\s*(?:let me|i'?ll|i will|going to|let's)\s+"
-        r"(?:tail|check|investigate|look at|see|tail|read|fetch|inspect|"
-        r"verify|diagnose|examine|debug|capture|grab|pull|view|run|call|"
+        r"(?:^|\n)\s*(?:let me|i'?ll|i will|going to|let's|i(?:'m| am) going to|i(?:'ll| will) now)\s+"
+        r"(?:tail|check|investigate|look at|see|read|fetch|inspect|"
+        r"verify|diagnose|examine|audit|review|analyze|analyse|scan|assess|"
+        r"debug|capture|grab|pull|view|run|call|"
         r"trigger|launch|start|kick off|stop|kill|restart|adopt|serve|"
-        r"register|adopt|list|search|find|query|hit|ping|test)"
+        r"register|list|search|find|query|hit|ping|test|validate|confirm|"
+        r"count|measure|compare|report|summarize|summarise|enumerate)"
         r"\b[^.\n]{0,140}",
         re.IGNORECASE,
     )
@@ -2144,9 +2181,11 @@ async def stream_agent_loop(
                     "content": (
                         f"You just wrote: \"{_matched_phrase}\" — but ended the "
                         "turn without making the actual tool call. The user can "
-                        "see you announced the action but didn't run it, which "
-                        "is the most frustrating thing you can do. "
-                        "DO IT NOW: emit the actual function call this turn. "
+                        "see you announced the action but didn't run it. "
+                        "This is especially visible with audit/verify/review/analyze "
+                        "language: claiming to audit without calling tools produces "
+                        "a fake audit. "
+                        "DO IT NOW: emit the actual tool call this turn. "
                         "If you decided not to do it after all, say so plainly in "
                         "one sentence instead of restating the plan."
                     ),
@@ -2284,6 +2323,7 @@ async def stream_agent_loop(
                         owner=owner,
                         progress_cb=_push_progress,
                         workspace=workspace,
+                        current_endpoint_url=endpoint_url,
                     )
                 finally:
                     # Sentinel so the drainer knows to stop.

@@ -299,7 +299,13 @@ def _move_email_message(conn, uid: str, dest: str, role: str = "") -> bool:
     dest = _resolve_mail_folder(conn, dest, role or _folder_role_from_name(dest))
     if _uid_exists(conn, uid):
         status, _ = conn.uid("MOVE", _uid_bytes(uid), _q(dest))
-        if status == "OK":
+        # MOVE keeps the source mailbox selected, so we can verify the
+        # message actually left it. Gmail can return OK for a no-op MOVE
+        # (e.g. "Archive" resolves to "[Gmail]/All Mail" while All Mail is
+        # already selected, or "Trash" resolves oddly for some accounts) —
+        # in that case fall through to the COPY+\Deleted+expunge path,
+        # which is Gmail's real "remove from this view" mechanism.
+        if status == "OK" and not _uid_exists(conn, uid):
             return True
         status, _ = conn.uid("COPY", _uid_bytes(uid), _q(dest))
         if status != "OK":
@@ -312,7 +318,7 @@ def _move_email_message(conn, uid: str, dest: str, role: str = "") -> bool:
         status, _ = conn.store(_uid_bytes(uid), "+FLAGS", "\\Deleted")
     if status == "OK":
         conn.expunge()
-        return True
+        return not _uid_exists(conn, uid)
     return False
 
 
@@ -961,6 +967,58 @@ def setup_email_routes():
                 except Exception:
                     pass
 
+    def _list_all_accounts_sync(folder, limit, offset, filter_, from_addr, has_attachments_only, owner):
+        """Aggregate emails from all enabled accounts for this owner.
+        Fetches limit+offset from each account, merges, sorts by date desc,
+        then applies offset+limit to produce the final page.
+        """
+        from core.database import SessionLocal as _SL, EmailAccount as _EA
+        from sqlalchemy import and_, or_
+        db = _SL()
+        try:
+            unowned = or_(_EA.owner == None, _EA.owner == "")  # noqa: E711
+            same_mailbox = or_(_EA.imap_user == owner, _EA.from_address == owner)
+            q = db.query(_EA).filter(_EA.enabled == True)  # noqa: E712
+            if owner:
+                q = q.filter(or_(_EA.owner == owner, and_(unowned, same_mailbox)))
+            account_ids = [r.id for r in q.order_by(_EA.is_default.desc(), _EA.created_at.asc()).all()]
+        finally:
+            db.close()
+
+        if not account_ids:
+            return {"emails": [], "total": 0, "folder": folder, "offset": offset}
+
+        if len(account_ids) == 1:
+            result = _list_emails_sync(folder, limit, offset, filter_, account_ids[0], from_addr, has_attachments_only, owner)
+            for em in result.get("emails") or []:
+                em.setdefault("_account_id", account_ids[0])
+            return result
+
+        # Fetch from each account; gather more than `limit` to have enough after merge
+        fetch_per = max(limit + offset, 50)
+        all_emails = []
+        for aid in account_ids:
+            try:
+                r = _list_emails_sync(folder, fetch_per, 0, filter_, aid, from_addr, has_attachments_only, owner)
+                for em in r.get("emails") or []:
+                    em.setdefault("_account_id", aid)
+                all_emails.extend(r.get("emails") or [])
+            except Exception as _e:
+                logger.debug(f"list_all_accounts: skipping account {aid}: {_e}")
+
+        # Sort merged list by date desc (most recent first)
+        def _date_key(em):
+            try:
+                from email.utils import parsedate_to_datetime as _p
+                return _p(em.get("date", "")).timestamp()
+            except Exception:
+                return 0.0
+        all_emails.sort(key=_date_key, reverse=True)
+
+        total = len(all_emails)
+        page = all_emails[offset: offset + limit]
+        return {"emails": page, "total": total, "folder": folder, "offset": offset}
+
     @router.get("/list")
     async def list_emails(
         folder: str = Query("INBOX"),
@@ -986,10 +1044,18 @@ def setup_email_routes():
             if cached is not None:
                 _schedule_recent_email_warm(cached.get("emails") or [], folder, account_id, owner)
                 return cached
-        result = await _asyncio.to_thread(
-            _list_emails_sync, folder, limit, offset, filter, account_id, from_addr,
-            bool(has_attachments), owner,
-        )
+
+        # When no specific account is requested, aggregate all enabled accounts.
+        if not account_id:
+            result = await _asyncio.to_thread(
+                _list_all_accounts_sync, folder, limit, offset, filter, from_addr,
+                bool(has_attachments), owner,
+            )
+        else:
+            result = await _asyncio.to_thread(
+                _list_emails_sync, folder, limit, offset, filter, account_id, from_addr,
+                bool(has_attachments), owner,
+            )
         if result and not result.get("error"):
             if offset == 0 and not from_addr and not has_attachments and filter in ("all", "unread", "unanswered", "undone"):
                 _record_email_received_events(owner, account_id, folder, result.get("emails") or [])
@@ -1175,7 +1241,7 @@ def setup_email_routes():
                 _t_select = _t.monotonic() - _t0
                 status, msg_data = _imap_uid_fetch(conn, uid, "(BODY.PEEK[])")
                 _t_fetch = _t.monotonic() - _t0
-                if status != "OK":
+                if status != "OK" or not msg_data or msg_data[0] is None:
                     return {"error": f"Email UID {uid} not found"}
                 raw = msg_data[0][1]
 
@@ -1191,6 +1257,16 @@ def setup_email_routes():
             references = msg.get("References", "")
             body = _extract_text(msg)
             body_html = _extract_html(msg)
+
+            # Rewrite cid: references so inline images load via the server.
+            if body_html and "cid:" in body_html:
+                import re as _re, urllib.parse as _up
+                _acct_qs = f"&account_id={_up.quote(account_id)}" if account_id else ""
+                _folder_qs = _up.quote(folder)
+                def _rewrite_cid(m):
+                    cid_val = m.group(1).strip()
+                    return f'src="/api/email/inline-image/{_up.quote(uid)}?part_cid={_up.quote(cid_val)}&folder={_folder_qs}{_acct_qs}"'
+                body_html = _re.sub(r'src=["\']cid:([^"\'>\s]+)["\']', _rewrite_cid, body_html, flags=_re.I)
 
             sender_name, sender_addr = email.utils.parseaddr(sender)
             parsed_date = email.utils.parsedate_to_datetime(date_str) if date_str else None
@@ -1411,6 +1487,46 @@ def setup_email_routes():
         except Exception as e:
             logger.error(f"Failed to list attachments for {uid}: {e}")
             return {"attachments": [], "error": "Mail operation failed"}
+
+    @router.get("/inline-image/{uid}")
+    async def get_inline_image(
+        uid: str,
+        part_cid: str = Query(...),
+        folder: str = Query("INBOX"),
+        account_id: str | None = Query(None),
+        owner: str = Depends(require_owner),
+    ):
+        """Serve an inline (cid:) image part from an IMAP email.
+
+        The email viewer rewrites src="cid:..." to point here so inline images
+        render correctly without embedding base64 blobs in the read response.
+        """
+        from fastapi.responses import Response as _Resp
+        try:
+            with _imap(account_id, owner=owner) as conn:
+                conn.select(_q(folder), readonly=True)
+                status, msg_data = _imap_uid_fetch(conn, uid, "(BODY.PEEK[])")
+            if status != "OK":
+                return _Resp(status_code=404, content=b"")
+            raw = msg_data[0][1]
+            msg = email_mod.message_from_bytes(raw)
+            # Strip angle brackets from the query param for flexible matching.
+            target_cid = part_cid.strip().strip("<>").lower()
+            for part in msg.walk():
+                raw_cid = part.get("Content-ID", "")
+                if not raw_cid:
+                    continue
+                norm_cid = raw_cid.strip().strip("<>").lower()
+                if norm_cid == target_cid or target_cid in norm_cid:
+                    payload = part.get_payload(decode=True)
+                    if payload:
+                        ct = part.get_content_type() or "image/png"
+                        return _Resp(content=payload, media_type=ct,
+                                     headers={"Cache-Control": "private, max-age=1800"})
+            return _Resp(status_code=404, content=b"")
+        except Exception as e:
+            logger.debug(f"inline-image fetch failed uid={uid} cid={part_cid}: {e}")
+            return _Resp(status_code=500, content=b"")
 
     @router.get("/attachment/{uid}/{index}")
     async def download_attachment(uid: str, index: int, folder: str = Query("INBOX"), account_id: str | None = Query(None), owner: str = Depends(require_owner)):
@@ -2877,6 +2993,7 @@ def setup_email_routes():
             to = data.get("to", "")
             subject = data.get("subject", "")
             original_body = data.get("original_body", "")
+            compose_prompt = (data.get("compose_prompt") or "").strip()
             requested_model = data.get("model", "").strip()
             session_id = data.get("session_id", "").strip()
             message_id = (data.get("message_id") or "").strip()
@@ -2884,7 +3001,7 @@ def setup_email_routes():
             source_folder = (data.get("folder") or "INBOX").strip()
             fast_reply = bool(data.get("fast", False))
 
-            if not original_body:
+            if not original_body and not compose_prompt:
                 return {"success": False, "error": "No email body provided"}
 
             if message_id:
@@ -2988,8 +3105,9 @@ def setup_email_routes():
             # reserve that for callers that explicitly opt out of fast mode.
             # Owner-scoped so pre-retrieval never crosses tenants.
             context_snippets, _terms = ([], [])
+            _ctx_body = original_body or compose_prompt
             if not fast_reply:
-                context_snippets, _terms = _pre_retrieve_context(original_body, to, owner=owner)
+                context_snippets, _terms = _pre_retrieve_context(_ctx_body, to, owner=owner)
 
             # NEW: also pull the last few emails from the original sender +
             # their attachments. The "to" field on this endpoint is the
@@ -3024,11 +3142,20 @@ def setup_email_routes():
                     "directly asked about something in it.\n\n" + referenced[:18000]
                 )
 
-            user_msg = (
-                f"Recipient: {to}\nSubject: {subject}\n\n"
-                f"Original email and any current draft:\n{original_body[:6000]}\n\n"
-                f"Draft a reply. Return only the reply body text."
-            )
+            if compose_prompt:
+                user_msg = (
+                    f"Write a new email.\n"
+                    f"User's request: {compose_prompt}\n\n"
+                    + (f"To: {to}\n" if to else "")
+                    + (f"Subject: {subject}\n\n" if subject else "\n")
+                    + "Return the email body text only (no headers unless To/Subject were not provided, in which case suggest them as 'To: ...' and 'Subject: ...' on the first lines)."
+                )
+            else:
+                user_msg = (
+                    f"Recipient: {to}\nSubject: {subject}\n\n"
+                    f"Original email and any current draft:\n{original_body[:6000]}\n\n"
+                    f"Draft a reply. Return only the reply body text."
+                )
 
             # Build a candidate chain so a stale session-stored API key
             # (the most common cause of "authentication failed" here)

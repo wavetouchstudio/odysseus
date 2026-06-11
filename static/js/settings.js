@@ -1603,6 +1603,31 @@ async function initAgentSettings() {
     (curR != null ? ' · ' + curR + ' steps/message' : '');
 }
 
+/* ── Sub-Agent Settings (AI tab) ── */
+async function initSubagentSettings() {
+  var input = el('set-subagentModelOverride');
+  var msg = el('set-subagentMsg');
+  if (!input) return;
+  try {
+    var res = await fetch('/api/auth/settings', { credentials: 'same-origin' });
+    var s = await res.json();
+    input.value = s.subagent_model_override || '';
+    if (msg) msg.textContent = s.subagent_model_override ? 'Using: ' + s.subagent_model_override : 'Auto (cascade)';
+  } catch (e) {}
+  async function save() {
+    var val = input.value.trim();
+    try {
+      await fetch('/api/auth/settings', { method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subagent_model_override: val })
+      });
+      if (msg) { msg.textContent = val ? 'Using: ' + val : 'Auto (cascade)'; msg.style.color = 'var(--fg)'; }
+    } catch (e) { if (msg) { msg.textContent = 'Failed to save'; msg.style.color = 'var(--red)'; } }
+  }
+  input.addEventListener('change', save);
+  input.addEventListener('blur', save);
+}
+
 /* ═══════════════════════════════════════════
    APPEARANCE TAB
    ═══════════════════════════════════════════ */
@@ -2189,6 +2214,7 @@ function initAll() {
   initResearchSettings();
   initResearchSearchSettings();
   initAgentSettings();
+  initSubagentSettings();
   initAppearance();
   initShortcuts();
   initAccount();

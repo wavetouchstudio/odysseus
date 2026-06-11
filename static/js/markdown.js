@@ -373,13 +373,19 @@ function _useSvgEmoji() {
 // The Unicode-emoji → monochrome-SVG pass always runs regardless, so a real 😀
 // in a document still renders as the themed line icon as it always has.
 export function svgifyEmoji(html, opts) {
-  if (!_useSvgEmoji() || !html) return html;
+  if (!html) return html;
   const allowShortcodes = !opts || opts.shortcodes !== false;
   // Two reasons to walk the HTML: real Unicode emoji to turn into SVG icons,
   // or `:shortcode:` text the model emitted instead of an emoji (issue #345).
   const hasUnicode = _EMOJI_RE.test(html);
   const hasShortcode = allowShortcodes && hasEmojiShortcode(html);
   if (!hasUnicode && !hasShortcode) return html;
+  // In "Text-only Emojis" mode, skip the SVG-icon pass but still expand
+  // `:shortcode:` to Unicode — otherwise literal `:fire:` text never becomes
+  // 🔥, so deEmojify() (which only recognizes Unicode emoji / .emoji spans)
+  // has nothing to convert and the shortcode is stuck as raw text forever.
+  const useSvg = _useSvgEmoji();
+  if (!useSvg && !hasShortcode) return html;
   const parts = html.split(/(<[^>]*>)/);   // odd indices = tags
   let codeDepth = 0;
   for (let i = 0; i < parts.length; i++) {
@@ -394,7 +400,7 @@ export function svgifyEmoji(html, opts) {
     // Expand shortcodes to Unicode first, then both they and any pre-existing
     // Unicode emoji get rendered as the same monochrome line icons below.
     if (hasShortcode) seg = replaceEmojiShortcodes(seg);
-    if (_EMOJI_RE.test(seg)) seg = _svgifyText(seg);
+    if (useSvg && _EMOJI_RE.test(seg)) seg = _svgifyText(seg);
     parts[i] = seg;
   }
   return parts.join('');
@@ -433,7 +439,7 @@ export function processWithThinking(text) {
     html += mdToHtml(content);
   }
 
-  return _useSvgEmoji() ? svgifyEmoji(html) : html;
+  return svgifyEmoji(html);
 }
 
 /**
@@ -698,7 +704,7 @@ export function mdToHtml(src, opts) {
     s = s.replace(`___CODE_BLOCK_${index}___`, block);
   });
 
-  return _useSvgEmoji() ? svgifyEmoji(s, opts) : s;
+  return svgifyEmoji(s, opts);
 }
 
 /**

@@ -189,6 +189,15 @@ function _bindEvents() {
     });
   }
 
+  // AI Draft button: prompt user for topic, generate draft with writing style
+  const aiDraftBtn = document.getElementById('email-ai-draft-btn');
+  if (aiDraftBtn) {
+    aiDraftBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      _composeDraftWithAI();
+    });
+  }
+
   // Initial unread count check, refresh every 60s
   _refreshUnreadCount();
   setInterval(_refreshUnreadCount, 60000);
@@ -663,7 +672,8 @@ async function _openEmail(em, itemEl, preloadedData = null, mode = 'reply') {
   try {
     let data = preloadedData;
     if (!data) {
-      const res = await fetch(`${API_BASE}/api/email/read/${em.uid}?folder=${encodeURIComponent(_currentFolder)}${_acct()}`);
+      const _emAcct = em._account_id ? `&account_id=${encodeURIComponent(em._account_id)}` : _acct();
+      const res = await fetch(`${API_BASE}/api/email/read/${em.uid}?folder=${encodeURIComponent(_currentFolder)}${_emAcct}`);
       data = await res.json();
     }
     if (data.error) {
@@ -926,6 +936,8 @@ function _showEmailMenu(em, anchor, itemEl) {
 
   const actions = [
     { label: 'Open', icon: _replyIcon, action: () => _openEmail(em, itemEl) },
+    { label: 'Reply via AI', icon: '✦', action: () => _openEmail(em, itemEl, null, 'ai-reply') },
+    { label: 'Analyze', icon: '◎', action: () => _analyzeEmail(em) },
     { label: 'Remind to reply', icon: _bellIcon, submenu: 'remind' },
     { label: 'Archive', icon: _archiveIcon, action: () => _archiveEmail(em) },
     { label: 'Delete', icon: _deleteIcon, danger: true, action: () => _deleteEmail(em) },
@@ -957,6 +969,40 @@ function _showEmailMenu(em, anchor, itemEl) {
     }
   };
   setTimeout(() => document.addEventListener('click', close, true), 10);
+}
+
+// ---- AI Analyze email: shows summary + key points in a floating panel ----
+
+async function _analyzeEmail(em) {
+  const existing = document.getElementById('email-analyze-panel');
+  if (existing) existing.remove();
+
+  const panel = document.createElement('div');
+  panel.id = 'email-analyze-panel';
+  panel.style.cssText = 'position:fixed;bottom:80px;right:20px;width:320px;max-height:400px;overflow-y:auto;background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:14px 16px;box-shadow:0 8px 24px rgba(0,0,0,.35);z-index:9999;font-size:13px;';
+  panel.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;"><strong style="opacity:0.8;">✦ Analyze</strong><button id="email-analyze-close" style="background:none;border:none;cursor:pointer;opacity:0.5;font-size:16px;padding:0 2px;">✕</button></div><div id="email-analyze-body" style="color:var(--fg);line-height:1.5;">Analyzing…</div>`;
+  document.body.appendChild(panel);
+  panel.querySelector('#email-analyze-close').addEventListener('click', () => panel.remove());
+
+  try {
+    const res = await fetch(`${API_BASE}/api/email/summarize`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ uid: String(em.uid), folder: _currentFolder, account_id: _currentAccount || undefined }),
+    });
+    const data = await res.json();
+    const bodyEl = panel.querySelector('#email-analyze-body');
+    if (data.summary) {
+      bodyEl.innerHTML = data.summary.replace(/^- /gm, '• ').replace(/\n/g, '<br>');
+    } else if (data.error) {
+      bodyEl.textContent = 'Error: ' + data.error;
+    } else {
+      bodyEl.textContent = 'No summary available.';
+    }
+  } catch (e) {
+    const bodyEl = panel.querySelector('#email-analyze-body');
+    if (bodyEl) bodyEl.textContent = 'Failed: ' + e.message;
+  }
 }
 
 // ---- Reminder submenu (creates a Note with a reminder for this email) ----
@@ -1075,25 +1121,38 @@ async function _createReplyReminder(em, dueDate) {
 
 async function _archiveEmail(em) {
   try {
-    await fetch(`${API_BASE}/api/email/archive/${em.uid}?folder=${encodeURIComponent(_currentFolder)}${_acct()}`, { method: 'POST' });
+    const _emAcct = em._account_id ? `&account_id=${encodeURIComponent(em._account_id)}` : _acct();
+    const res = await fetch(`${API_BASE}/api/email/archive/${em.uid}?folder=${encodeURIComponent(_currentFolder)}${_emAcct}`, { method: 'POST' });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.success === false) {
+      throw new Error(data.error || `HTTP ${res.status}`);
+    }
     _emails = _emails.filter(e => e.uid !== em.uid);
     _renderList();
   } catch (e) {
     console.error('Failed to archive:', e);
+    const { showError } = await import('./ui.js');
+    showError(`Failed to archive email: ${e.message}`);
   }
 }
 
 async function _deleteEmail(em) {
   const subject = em.subject || '(no subject)';
-  const { styledConfirm } = await import('./ui.js');
+  const { styledConfirm, showError } = await import('./ui.js');
   const ok = await styledConfirm(`Delete "${subject}"?`, { confirmText: 'Delete', cancelText: 'Cancel', danger: true });
   if (!ok) return;
   try {
-    await fetch(`${API_BASE}/api/email/delete/${em.uid}?folder=${encodeURIComponent(_currentFolder)}${_acct()}`, { method: 'DELETE' });
+    const _emAcct = em._account_id ? `&account_id=${encodeURIComponent(em._account_id)}` : _acct();
+    const res = await fetch(`${API_BASE}/api/email/delete/${em.uid}?folder=${encodeURIComponent(_currentFolder)}${_emAcct}`, { method: 'DELETE' });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.success === false) {
+      throw new Error(data.error || `HTTP ${res.status}`);
+    }
     _emails = _emails.filter(e => e.uid !== em.uid);
     _renderList();
   } catch (e) {
     console.error('Failed to delete:', e);
+    showError(`Failed to delete email: ${e.message}`);
   }
 }
 
@@ -1111,11 +1170,12 @@ async function _toggleDone(em, itemEl) {
     if (check) check.classList.toggle('active', newState);
   }
   try {
+    const _emAcct = em._account_id ? `&account_id=${encodeURIComponent(em._account_id)}` : _acct();
     if (newState) {
-      await fetch(`${API_BASE}/api/email/mark-answered/${em.uid}?folder=${encodeURIComponent(_currentFolder)}${_acct()}`, { method: 'POST' });
-      await fetch(`${API_BASE}/api/email/mark-read/${em.uid}?folder=${encodeURIComponent(_currentFolder)}${_acct()}`, { method: 'POST' });
+      await fetch(`${API_BASE}/api/email/mark-answered/${em.uid}?folder=${encodeURIComponent(_currentFolder)}${_emAcct}`, { method: 'POST' });
+      await fetch(`${API_BASE}/api/email/mark-read/${em.uid}?folder=${encodeURIComponent(_currentFolder)}${_emAcct}`, { method: 'POST' });
     } else {
-      await fetch(`${API_BASE}/api/email/clear-answered/${em.uid}?folder=${encodeURIComponent(_currentFolder)}${_acct()}`, { method: 'POST' });
+      await fetch(`${API_BASE}/api/email/clear-answered/${em.uid}?folder=${encodeURIComponent(_currentFolder)}${_emAcct}`, { method: 'POST' });
     }
   } catch (e) {
     console.error('Failed to toggle done:', e);
@@ -1148,6 +1208,70 @@ async function _createEmailChat(emailData) {
     }
   } catch (e) {
     console.error('Failed to create email chat:', e);
+  }
+}
+
+async function _composeDraftWithAI() {
+  // Prompt for email details
+  const prompt = window.prompt('What should the email be about? (include recipient/subject if known)');
+  if (!prompt || !prompt.trim()) return;
+
+  import('./ui.js').then(m => m.showToast && m.showToast('Generating draft…', { duration: 4000, leadingIcon: 'spinner' })).catch(() => {});
+
+  try {
+    const res = await fetch(`${API_BASE}/api/email/ai-reply`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        to: '',
+        subject: '',
+        original_body: '',
+        compose_prompt: prompt.trim(),
+        fast: false,
+        session_id: (sessionModule?.getCurrentSessionId?.() || ''),
+      }),
+    });
+    const data = await res.json();
+    if (!data.success && !data.reply) {
+      import('./ui.js').then(m => m.showError && m.showError('AI draft failed: ' + (data.error || 'unknown'))).catch(() => {});
+      return;
+    }
+    const draft = data.reply || '';
+
+    // Parse To/Subject from draft if present
+    const lines = draft.split('\n');
+    let toLine = '', subjectLine = '', bodyStart = 0;
+    for (let i = 0; i < Math.min(lines.length, 6); i++) {
+      if (/^to:/i.test(lines[i])) { toLine = lines[i]; bodyStart = i + 1; }
+      else if (/^subject:/i.test(lines[i])) { subjectLine = lines[i]; bodyStart = i + 1; }
+    }
+    const body = lines.slice(bodyStart).join('\n').replace(/^\s*---\s*\n?/, '').trim();
+
+    if (!_docModule) return;
+    let sid = '';
+    try { sid = sessionModule?.getCurrentSessionId?.() || ''; } catch (_) {}
+    if (!sid) {
+      await _createEmailChat({ subject: 'AI Draft' });
+      try { sid = sessionModule?.getCurrentSessionId?.() || ''; } catch (_) {}
+    }
+    if (!sid) return;
+
+    const content = `${toLine || 'To: '}\n${subjectLine || 'Subject: '}\n---\n${body}`;
+    const docRes = await fetch(`${API_BASE}/api/document`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_id: sid, title: 'AI Draft', content, language: 'email' }),
+    });
+    if (!docRes.ok) { import('./ui.js').then(m => m.showError && m.showError('Failed to create draft doc')).catch(() => {}); return; }
+    const doc = await docRes.json();
+    if (doc.id) {
+      await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+      if (_docModule.injectFreshDoc) _docModule.injectFreshDoc(doc);
+      else _docModule.loadDocument(doc.id);
+    }
+  } catch (e) {
+    console.error('AI draft failed:', e);
+    import('./ui.js').then(m => m.showError && m.showError('AI draft failed: ' + e.message)).catch(() => {});
   }
 }
 

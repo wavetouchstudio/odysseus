@@ -2388,13 +2388,18 @@ body.bg-pattern-sparkles {
     }
     /* Instant feedback while the send handler is spinning up before streaming begins */
     .send-btn.send-pending {
-      opacity: 0.55;
+      background: var(--send-pending-bg, #e07b00) !important;
       pointer-events: none;
-      animation: send-pending-pulse 0.9s ease-in-out infinite;
+      animation: send-pending-pulse 0.75s ease-in-out infinite;
     }
     @keyframes send-pending-pulse {
-      0%, 100% { opacity: 0.55; }
-      50%      { opacity: 0.85; }
+      0%, 100% { opacity: 0.8; transform: scale(1); }
+      50%      { opacity: 1;   transform: scale(1.04); }
+    }
+    /* Brief green flash when the first token arrives */
+    .send-btn.send-first-token {
+      background: var(--send-ok-bg, #2a9d3a) !important;
+      transition: background 0.15s;
     }
     /* Send button icon transitions — send mode forces no animation */
     .send-btn[data-mode="send"] svg { animation: none !important; }
@@ -15301,6 +15306,49 @@ body:not(.email-doc-split-active) #email-lib-modal.email-lib-fullscreen:not(.mod
   cursor: pointer;
   transition: all 0.15s, opacity 0.3s, max-height 0.3s ease;
   position: relative;
+}
+/* "All accounts" combined view — read-only report grouped by account
+   (see _renderAllAccountsReport in emailLibrary.js). */
+.email-all-accounts-report {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 4px 2px;
+}
+.email-report-account-header {
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--fg) 4%, transparent);
+}
+.email-report-account-header:hover {
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+}
+.email-report-list {
+  display: flex;
+  flex-direction: column;
+  margin-left: 14px;
+  margin-top: 2px;
+  border-left: 1px solid var(--border);
+}
+.email-report-item {
+  font-size: 12px;
+  padding: 4px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.email-report-item:hover {
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
+}
+.email-report-sender {
+  font-weight: 500;
+}
+.email-report-subject {
+  opacity: 0.75;
 }
 .doclib-card.doclib-card-deleting {
   opacity: 0;

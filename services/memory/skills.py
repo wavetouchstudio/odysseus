@@ -481,13 +481,28 @@ class SkillsManager:
             return True
         return False
 
-    def record_use(self, skill_id: str, owner: Optional[str] = None) -> None:
+    def record_use(self, skill_id: str, owner: Optional[str] = None,
+                   session_id: Optional[str] = None) -> None:
         usage = self._load_usage()
         key = self._usage_key(skill_id, owner)
         entry = usage.setdefault(key, {"uses": 0, "last_used": None})
         entry["uses"] = int(entry.get("uses", 0)) + 1
-        entry["last_used"] = int(time.time())
+        ts = int(time.time())
+        entry["last_used"] = ts
+        events = entry.setdefault("events", [])
+        events.append({"ts": ts, "session_id": session_id})
+        if len(events) > 50:
+            entry["events"] = events[-50:]
         self._save_usage(usage)
+
+    def get_use_history(self, skill_id: str, owner: Optional[str] = None,
+                        limit: int = 20) -> List[Dict]:
+        """Return the last `limit` use events for a skill."""
+        usage = self._load_usage()
+        key = self._usage_key(skill_id, owner)
+        entry = usage.get(key) or {}
+        events = entry.get("events") or []
+        return events[-limit:]
 
     # ----------------------------------------------------------------------
     # Reading a single skill (used by the skill_view tool)
@@ -559,13 +574,10 @@ class SkillsManager:
         out = []
         for s in self.load(owner=owner):
             status = s.get("status")
-            # Published + None (pre-status legacy) always included.
-            # Drafts only if the teacher wrote them.
+            # Only published skills (and legacy None) appear in the index.
+            # Drafts are never injected — user must explicitly publish.
             if status not in ("published", None):
-                if status == "draft" and s.get("source") == "teacher-escalation":
-                    pass  # let it through
-                else:
-                    continue
+                continue
             # Platform gating
             if platform and s.get("platforms") and platform not in s["platforms"]:
                 continue
@@ -604,13 +616,9 @@ class SkillsManager:
             skills = self.load_all()
         if not skills or not query.strip():
             return []
-        # Consider published AND draft skills for relevance retrieval.
-        # The teacher-escalation loop writes new skills as drafts; the
-        # whole point is for the student to find them on the next try
-        # without a manual publish click. The UI flags teacher-written
-        # entries with a 🎓 badge so users can demote / delete bad
-        # ones when they spot them.
-        skills = [s for s in skills if s.get("status") in ("published", "draft")]
+        # Only surface published skills (and legacy None-status) for relevance
+        # matching. Drafts are excluded — user must publish before injection.
+        skills = [s for s in skills if s.get("status") in ("published", None)]
         # Confidence gate (used by prompt-injection, NOT by search): a DRAFT
         # skill must clear the bar to be injected. Published skills are already
         # vetted, so they always qualify. Missing confidence = treat as 1.0

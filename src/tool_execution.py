@@ -1104,6 +1104,7 @@ async def execute_tool_block(
     owner: Optional[str] = None,
     progress_cb: Optional[Callable[[Dict], Awaitable[None]]] = None,
     workspace: Optional[str] = None,
+    current_endpoint_url: Optional[str] = None,
 ) -> Tuple[str, Dict]:
     """Execute a single tool block. Returns (description, result_dict).
 
@@ -1244,6 +1245,31 @@ async def execute_tool_block(
                   "send_to_session", "pipeline",
                   "manage_session", "manage_memory", "list_models",
                   "ui_control", "ask_teacher"):
+        # Guard: prevent the agent from calling itself recursively.
+        if current_endpoint_url and tool in ("chat_with_model", "create_session", "pipeline"):
+            from src.ai_interaction import _resolve_model
+            from src.model_context import _normalize_base_for_compare
+            _model_spec = content.strip().split("\n", 1)[0].strip()
+            if _model_spec:
+                try:
+                    _target_url, _target_model, _ = _resolve_model(_model_spec, owner=owner)
+                    _cur_base = _normalize_base_for_compare(current_endpoint_url)
+                    _tgt_base = _normalize_base_for_compare(_target_url)
+                    if _cur_base and _tgt_base and _cur_base == _tgt_base:
+                        desc = f"{tool}: BLOCKED (self-call)"
+                        result = {
+                            "error": (
+                                "[blocked: cannot call self] The agent attempted to invoke "
+                                f"'{_model_spec}' which resolves to the same endpoint currently "
+                                "running this agent. Use a different model or endpoint."
+                            ),
+                            "exit_code": 1,
+                        }
+                        logger.warning("Self-call blocked: tool=%s model_spec=%r current=%r target=%r",
+                                       tool, _model_spec, _cur_base, _tgt_base)
+                        return desc, result
+                except Exception:
+                    pass  # resolution failure → let dispatch handle it normally
         from src.ai_interaction import dispatch_ai_tool
         desc, result = await dispatch_ai_tool(tool, content, session_id, owner=owner)
     elif tool == "manage_tasks":

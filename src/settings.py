@@ -132,6 +132,9 @@ DEFAULT_SETTINGS = {
     "utility_model_fallbacks": [],
     "teacher_model": "",
     "teacher_enabled": False,
+    # Sub-agent model override: if set, used instead of SUBAGENT_HIERARCHY cascade.
+    # Format: "model_name" (resolved via enabled endpoints) or "" to use hierarchy.
+    "subagent_model_override": "",
     # Skills: minimum self-reported confidence for an auto-written (LLM-authored)
     # DRAFT skill to be injected into the agent prompt. Published skills always
     # qualify. Keeps low-confidence auto-skills out of context until they're

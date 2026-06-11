@@ -396,6 +396,22 @@ function initializeEventListeners() {
     });
   }
 
+  // Clear Logs: collapse agent tool outputs in current chat view
+  const exportClearLogsBtn = el('export-clear-logs-btn');
+  if (exportClearLogsBtn) {
+    exportClearLogsBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      exportMenu.classList.remove('open');
+      // Collapse all agent tool output <details> blocks in chat history
+      document.querySelectorAll('#chat-history .agent-tool-output').forEach(d => {
+        d.removeAttribute('open');
+      });
+      // Also clear subagent run history
+      try { await fetch(`${API_BASE}/api/subagent/runs`, { method: 'DELETE' }); } catch (_) {}
+      uiModule.showToast('Logs cleared');
+    });
+  }
+
   // Rename session from top bar
   const exportRenameBtn = el('export-rename-btn');
   if (exportRenameBtn) {

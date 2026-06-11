@@ -183,7 +183,10 @@ import createResearchSynapse from './researchSynapse.js';
 
     if (state === 'streaming') {
       // Clear any pending transitions from + → arrow swap
-      submitBtn.classList.remove('anim-spin', 'anim-spin-swap', 'anim-land', 'mic-mode', 'newchat-mode', 'newchat-expanded', 'recording');
+      submitBtn.classList.remove('anim-spin', 'anim-spin-swap', 'anim-land', 'mic-mode', 'newchat-mode', 'newchat-expanded', 'recording', 'send-pending');
+      // Brief green flash: first token received
+      submitBtn.classList.add('send-first-token');
+      setTimeout(() => submitBtn.classList.remove('send-first-token'), 250);
       // Ensure arrow icon is showing before launch
       var icons = window._odysseusBtnIcons;
       if (icons) submitBtn.innerHTML = icons.send;
@@ -748,6 +751,10 @@ import createResearchSynapse from './researchSynapse.js';
       if (documentModule && documentModule.isPanelOpen() && documentModule.getCurrentDocId()) {
         try { await documentModule.saveDocument({ silent: true }); } catch (_e) { /* best-effort */ }
         fd.append('active_doc_id', documentModule.getCurrentDocId());
+        if (documentModule.getOpenDocIds) {
+          const openIds = documentModule.getOpenDocIds();
+          if (openIds.length > 1) fd.append('open_doc_ids', JSON.stringify(openIds));
+        }
       }
       // Web toggle: pre-search in Chat mode, tool permission in Agent mode
       const toggleState = Storage.loadToggleState();

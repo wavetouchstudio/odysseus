@@ -195,12 +195,19 @@ def _pip_install_attempt(pip_cmd: str) -> str:
     )
 
 
-def _pip_install_fallback_chain(package: str, *, python_cmd: str = "python3 -m pip", upgrade: bool = False) -> str:
+def _pip_install_fallback_chain(package: str, *, python_cmd: str = "python3 -m pip", upgrade: bool = False, target_windows: bool = False) -> str:
     """Build a bash pip install fallback chain that surfaces errors.
 
     Try the active interpreter/environment first. ``--user`` is invalid
     inside many venvs, so only attempt the ``--user`` fallback when NOT
     inside a venv.
+
+    ``--break-system-packages`` is a PEP-668 flag for Linux distro pythons
+    (Arch, newer Debian) and is unsupported by the pip versions that ship
+    with python.org's Windows installer ("no such option"). Pass
+    ``target_windows=True`` when the install runs on a Windows host (the
+    Git-Bash-wrapped local download path) to drop it from the fallback,
+    keeping just ``--user``.
 
     Each attempt is wrapped via :func:`_pip_install_attempt` so pip's real
     exit code is preserved (no ``| tail`` masking) and the last 5 lines of
@@ -213,7 +220,8 @@ def _pip_install_fallback_chain(package: str, *, python_cmd: str = "python3 -m p
     # ``huggingface_hub``) are returned unchanged by ``shlex.quote``.
     pkg = shlex.quote(package)
     base = _pip_install_attempt(f"{python_cmd} install -q{upgrade_flag} {pkg}")
-    user = _pip_install_attempt(f"{python_cmd} install --user --break-system-packages -q{upgrade_flag} {pkg}")
+    _user_flags = "--user" if target_windows else "--user --break-system-packages"
+    user = _pip_install_attempt(f"{python_cmd} install {_user_flags} -q{upgrade_flag} {pkg}")
     # Derive the python executable for the venv detection check.
     # Must use the same interpreter that pip belongs to; hardcoding
     # python3 breaks when pip lives in a venv that only has "python".

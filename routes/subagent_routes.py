@@ -86,12 +86,14 @@ def _persist_run(run: dict) -> None:
 _load_history()
 
 
-def _new_run(model: str, prompt: str, tools: List[str], agent: bool) -> Tuple[str, dict]:
+def _new_run(model: str, prompt: str, tools: List[str], agent: bool,
+             label: Optional[str] = None) -> Tuple[str, dict]:
     run_id = uuid.uuid4().hex[:8]
     run = {
         "id": run_id,
         "model": model or "auto",
         "prompt": prompt[:300],
+        "label": label or None,
         "tools": tools,
         "agent": agent,
         "status": "running",
@@ -299,6 +301,9 @@ async def _run_agent(url: str, model: str, messages: list,
             delta = data.get("delta", "")
             if delta:
                 chunks.append(delta)
+                # Update in-memory response so polling frontend sees live progress
+                if run is not None:
+                    run["response"] = "".join(chunks)
         except (json.JSONDecodeError, AttributeError):
             logger.info("[subagent-debug] raw chunk: %s", repr(raw[:200]))
 
@@ -313,6 +318,7 @@ class SubagentRequest(BaseModel):
     timeout: int = 120
     agent:   bool = False
     tools:   List[str] = []
+    label:   Optional[str] = None   # user-visible job name shown in the monitor
 
 
 @router.get("/api/subagent/runs")
@@ -320,6 +326,19 @@ async def get_subagent_runs(req: Request):
     """Return the last N subagent runs, newest first."""
     runs = [_runs[rid] for rid in reversed(list(_run_order)) if rid in _runs]
     return {"runs": runs}
+
+
+@router.delete("/api/subagent/runs")
+async def clear_subagent_runs(req: Request):
+    """Clear all in-memory subagent run history."""
+    _runs.clear()
+    _run_order.clear()
+    try:
+        if _HISTORY_PATH.exists():
+            _HISTORY_PATH.write_text("{}", encoding="utf-8")
+    except Exception:
+        pass
+    return {"cleared": True}
 
 
 @router.post("/api/subagent")
@@ -376,7 +395,14 @@ async def subagent(req: Request):
                 raise HTTPException(404, f"Model '{body.model}' not found in any enabled endpoint")
             candidates = [result]
         else:
-            candidates = _build_hierarchy_candidates(db)
+            # Check for a user-configured override before falling back to hierarchy
+            from src.settings import get_setting
+            _override = (get_setting("subagent_model_override") or "").strip()
+            if _override:
+                _ov_result = _find_for_model(db, _override)
+                candidates = [_ov_result] if _ov_result else []
+            if not _override or not candidates:
+                candidates = _build_hierarchy_candidates(db)
             if not candidates:
                 raise HTTPException(503, "No models available in subagent hierarchy")
     finally:
@@ -384,7 +410,7 @@ async def subagent(req: Request):
 
     last_err: Optional[Exception] = None
     for url, model, headers in candidates:
-        run_id, run = _new_run(model, body.prompt, body.tools, body.agent)
+        run_id, run = _new_run(model, body.prompt, body.tools, body.agent, label=body.label)
         t0 = time.monotonic()
         effective_timeout = _apply_model_timeout(model, body.timeout)
         try:

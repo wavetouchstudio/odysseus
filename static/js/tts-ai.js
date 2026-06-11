@@ -67,7 +67,7 @@ class AITTSManager {
 
     extractPlainText(content) {
         // Strip <think>/<thinking> blocks (model reasoning)
-        let cleaned = content.replace(/<think(?:ing)?>[\s\S]*?<\/think(?:ing)?>/gi, '');
+        let cleaned = content.replace(/<think(?:ing)?(?:\s[^>]*)?>[\s\S]*?<\/think(?:ing)?>/gi, '');
 
         // Create a temporary div to parse HTML/markdown
         const temp = document.createElement('div');

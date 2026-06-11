@@ -3459,6 +3459,19 @@ import * as Modals from './modalManager.js';
         fetch(`${API_BASE}/api/document/${prevId}`, { method: 'DELETE' }).catch(() => {});
         docs.delete(prevId);
         _syncDocIndicator();
+      } else {
+        // Flush the doc we're leaving to the backend immediately. Without
+        // this, edits made right before a quick tab switch only land in the
+        // in-memory `docs` map — the pending debounced saveDocument() fires
+        // later against the NEW activeDocId/textarea, never persisting this
+        // doc's edit. That left other-open-document context (sent to the
+        // model) stale/empty for short-lived edits.
+        clearTimeout(_autoSaveDebounce);
+        fetch(`${API_BASE}/api/document/${prevId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content: prev.content }),
+        }).catch(() => {});
       }
     }
 
@@ -3807,6 +3820,12 @@ import * as Modals from './modalManager.js';
       <div class="doc-editor-header" id="doc-editor-actions">
         <button id="doc-undo-btn" class="doc-action-icon-btn" title="Undo (Ctrl+Z)" style="gap:4px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg><span style="font-size:11px;">Undo</span></button>
         <button id="doc-header-preview-btn" class="doc-action-icon-btn" title="Run / Preview" style="display:none;opacity:0.85;gap:4px;"></button>
+        <button id="doc-bg-task-btn" class="doc-action-icon-btn" title="Send to Background Agent" style="gap:4px;opacity:0.75;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M2 12h3M19 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12"/></svg><span style="font-size:11px;">Agent</span></button>
+        <div id="doc-bg-task-prompt" class="doc-bg-task-prompt" style="display:none;">
+          <input id="doc-bg-task-input" class="doc-bg-task-input" type="text" placeholder="What should the agent do with this document?" autocomplete="off" spellcheck="false" />
+          <button id="doc-bg-task-submit" class="doc-bg-task-submit" title="Send to agent">→</button>
+          <button id="doc-bg-task-cancel" class="doc-bg-task-cancel" title="Cancel">✕</button>
+        </div>
         <span id="doc-stream-indicator" class="doc-stream-indicator" style="display:none"><span class="doc-stream-dot"></span> editing</span>
         <span id="doc-version-badge" class="doc-version-badge" title="Version history" style="display:none">v1</span>
         <span style="flex:1"></span>
@@ -4638,6 +4657,61 @@ import * as Modals from './modalManager.js';
 
     // Export PDF (form-backed markdown docs)
     document.getElementById('doc-export-pdf-btn')?.addEventListener('click', _downloadFilledPdf);
+
+    // Background Agent button — send doc content to a subagent job
+    const _bgTaskBtn    = document.getElementById('doc-bg-task-btn');
+    const _bgTaskPrompt = document.getElementById('doc-bg-task-prompt');
+    const _bgTaskInput  = document.getElementById('doc-bg-task-input');
+    const _bgTaskSubmit = document.getElementById('doc-bg-task-submit');
+    const _bgTaskCancel = document.getElementById('doc-bg-task-cancel');
+
+    if (_bgTaskBtn && _bgTaskPrompt) {
+      _bgTaskBtn.addEventListener('click', () => {
+        const visible = _bgTaskPrompt.style.display !== 'none';
+        _bgTaskPrompt.style.display = visible ? 'none' : 'flex';
+        if (!visible) setTimeout(() => _bgTaskInput?.focus(), 50);
+      });
+      _bgTaskCancel?.addEventListener('click', () => {
+        _bgTaskPrompt.style.display = 'none';
+      });
+
+      async function _fireBgTask() {
+        const userPrompt = (_bgTaskInput?.value || '').trim();
+        if (!userPrompt) return;
+        const ta = document.getElementById('doc-editor-textarea');
+        const docContent = ta ? ta.value : '';
+        const titleEl = document.getElementById('doc-title-input');
+        const title = titleEl ? titleEl.value : 'Document';
+        const label = `${userPrompt.slice(0, 50)} — ${title}`;
+        const fullPrompt = `${userPrompt}\n\n---\nDocument content:\n\n${docContent}`;
+        _bgTaskPrompt.style.display = 'none';
+        _bgTaskInput.value = '';
+        try {
+          await fetch(`${API_BASE}/api/subagent`, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              prompt: fullPrompt,
+              agent: false,
+              label,
+              timeout: 180,
+            }),
+          });
+        } catch (e) {
+          console.warn('[doc] background task fire failed:', e);
+        }
+        // Open the subagent monitor so the user can watch progress
+        const monitorBtn = document.getElementById('tool-subagent-btn');
+        if (monitorBtn) monitorBtn.click();
+      }
+
+      _bgTaskSubmit?.addEventListener('click', _fireBgTask);
+      _bgTaskInput?.addEventListener('keydown', e => {
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); _fireBgTask(); }
+        if (e.key === 'Escape') _bgTaskPrompt.style.display = 'none';
+      });
+    }
 
     // Toggle inline PDF view (form-backed markdown docs). Default for a
     // form-backed doc is "active" — the toggle reads back the visible state.
@@ -9682,6 +9756,11 @@ import * as Modals from './modalManager.js';
     return activeDocId;
   }
 
+  /** Returns ids of all currently open document tabs (including the active one). */
+  export function getOpenDocIds() {
+    return Array.from(docs.keys());
+  }
+
   /** Find an open email tab by source UID + folder. Returns docId or null. */
   export function findEmailDocId(uid, folder) {
     if (uid == null) return null;
@@ -9723,6 +9802,7 @@ const documentModule = {
   exitDiffMode,
   isDiffModeActive,
   getCurrentDocId,
+  getOpenDocIds,
   findEmailDocId,
   getSelectionContext,
   clearSelection,

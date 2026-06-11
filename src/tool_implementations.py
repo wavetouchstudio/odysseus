@@ -107,6 +107,17 @@ def clear_active_document(doc_id: Optional[str] = None) -> bool:
     return False
 
 
+def _extract_doc_directive(content: str) -> tuple:
+    """Strip a leading `@doc:<doc_id>` directive line, used to target a
+    specific open document for edit_document/update_document/suggest_document
+    when multiple documents are open (multi-file workflows). Returns
+    (doc_id_or_None, remaining_content)."""
+    m = re.match(r"[ \t]*@doc:\s*(\S+)\s*\n(.*)", content or "", re.DOTALL)
+    if m:
+        return m.group(1), m.group(2)
+    return None, content
+
+
 def _owned_document_query(query, Document, owner: Optional[str]):
     if owner is None:
         # A bare Python `False` is not a valid SQL expression — SQLAlchemy 1.4
@@ -168,14 +179,17 @@ def _sniff_doc_language(text: str) -> str:
     first = s.split("\n", 1)[0].strip().lower()
     if first.startswith("#!"):
         return "python" if "python" in first else "bash"
-    # Code by strong leading signals (line-anchored so prose with stray words won't match)
-    if _re2.search(r"(?m)^\s*(def \w|class \w|import \w|from \w[\w.]* import )", s):
+    # Code by strong leading signals (line-anchored so prose with stray words won't match).
+    # Scan only the head: these patterns can backtrack badly over megabytes of
+    # binary content (e.g. an image opened as a document), which would block
+    # the event loop.
+    if _re2.search(r"(?m)^\s*(def \w|class \w|import \w|from \w[\w.]* import )", head):
         return "python"
-    if _re2.search(r"(?m)^\s*(function \w|const \w|let \w|export |import .* from )", s):
+    if _re2.search(r"(?m)^\s*(function \w|const \w|let \w|export |import .* from )", head):
         return "javascript"
-    if _re2.search(r"(?mi)^\s*(select .* from |create table |insert into |update \w)", s):
+    if _re2.search(r"(?mi)^\s*(select .* from |create table |insert into |update \w)", head):
         return "sql"
-    if _re2.search(r"(?m)^[.#]?[\w-]+\s*\{[^{}]*:[^{}]*;", s):
+    if _re2.search(r"(?m)^[.#]?[\w-]+\s*\{[^{}]*:[^{}]*;", head):
         return "css"
     return "markdown"
 
@@ -338,7 +352,8 @@ async def do_update_document(content: str, doc_id: Optional[str] = None, owner: 
     import uuid
     from src.database import SessionLocal, Document, DocumentVersion
 
-    target_id = doc_id or _active_document_id
+    _directive_id, content = _extract_doc_directive(content)
+    target_id = doc_id or _directive_id or _active_document_id
 
     db = SessionLocal()
     try:
@@ -402,7 +417,8 @@ async def do_edit_document(content: str, doc_id: Optional[str] = None, owner: Op
     import uuid
     from src.database import SessionLocal, Document, DocumentVersion
 
-    target_id = doc_id or _active_document_id
+    _directive_id, content = _extract_doc_directive(content)
+    target_id = doc_id or _directive_id or _active_document_id
 
     edits = parse_edit_blocks(content)
     if not edits:
@@ -509,7 +525,8 @@ async def do_suggest_document(content: str, doc_id: str = None, owner: Optional[
     """Create inline suggestions for the active document WITHOUT modifying it."""
     from src.database import SessionLocal, Document
 
-    target_id = doc_id or _active_document_id
+    _directive_id, content = _extract_doc_directive(content)
+    target_id = doc_id or _directive_id or _active_document_id
     if not target_id:
         return {"error": "No active document to suggest on"}
 
@@ -677,6 +694,10 @@ async def do_manage_skills(content: str, owner: Optional[str] = None) -> Dict:
         md = sm.read_skill_md(name, owner=owner)
         if md is None:
             return {"error": f"Skill {name!r} not found", "exit_code": 1}
+        try:
+            sm.record_use(name, owner=owner)
+        except Exception:
+            pass
         return {"results": md}
 
     if action == "view_ref":
@@ -2707,6 +2728,7 @@ _APP_API_BLOCKLIST_PREFIXES = (
 # /api/cookbook/state, which overwrote the whole file. Use the
 # dedicated preset/task tools instead.
 _APP_API_BLOCKLIST_METHOD_PATH = (
+    ("POST",   "/api/subagent"),        # in-chat model uses MCP tools directly; subagent route is for external callers only
     ("GET",    "/api/email/accounts"),  # owner-filtered in tool context; use list_email_accounts MCP tool
     ("POST",   "/api/cookbook/state"),   # whole-file overwrite — agent must use serve_preset/serve_model instead
     ("DELETE", "/api/cookbook/state"),

@@ -1576,6 +1576,19 @@ async def do_generate_image(content: str, session_id: Optional[str] = None, owne
     size = lines[2].strip() if len(lines) > 2 and lines[2].strip() else "1024x1024"
     quality = lines[3].strip() if len(lines) > 3 and lines[3].strip() else "medium"
 
+    # Parse optional [Model: checkpoint_name] directive from any line.
+    # When present on A1111, switches the active checkpoint before generation.
+    _sd_checkpoint = None
+    import re as _re_img
+    for _ln in lines:
+        _m = _re_img.match(r'^\[model:\s*(.+?)\s*\]$', _ln.strip(), _re_img.IGNORECASE)
+        if _m:
+            _sd_checkpoint = _m.group(1)
+            # If this was also line 2, clear model_spec so auto-detect still runs
+            if _ln.strip() == model_spec:
+                model_spec = ""
+            break
+
     if not prompt:
         return {"error": "Image prompt is required (line 1)"}
 
@@ -1788,6 +1801,21 @@ async def do_generate_image(content: str, session_id: Optional[str] = None, owne
                     "cfg_scale": 7,
                     "sampler_name": "Euler a",
                 }
+                # Switch SD checkpoint before generation if requested.
+                if _sd_checkpoint:
+                    try:
+                        _switch_resp = await client.post(
+                            base_url + "/sdapi/v1/options",
+                            json={"sd_model_checkpoint": _sd_checkpoint},
+                            auth=_a1111_auth,
+                            timeout=30.0,
+                        )
+                        if _switch_resp.status_code == 200:
+                            logger.info(f"A1111 model switched to: {_sd_checkpoint}")
+                        else:
+                            logger.warning(f"A1111 model switch failed ({_switch_resp.status_code}): {_sd_checkpoint}")
+                    except Exception as _sw_err:
+                        logger.warning(f"A1111 model switch error: {_sw_err}")
                 logger.info(f"A1111 generation: {base_url}/sdapi/v1/txt2img size={w}x{h} prompt={prompt[:80]}")
                 resp = await client.post(base_url + "/sdapi/v1/txt2img", json=a1111_payload, auth=_a1111_auth)
                 await resp.aread()  # force full body buffer — response can be 3-5MB for 1024x1024

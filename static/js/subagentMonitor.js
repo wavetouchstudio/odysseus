@@ -6,11 +6,14 @@ import { snapModalToZone } from './tileManager.js';
 import documentModule from './document.js';
 
 const API = window.location.origin;
-const POLL_MS = 3000;
+const POLL_OPEN_MS   = 2000;   // fast poll when monitor is open
+const POLL_CLOSED_MS = 8000;   // slower background poll for badge updates
 
 let _pollTimer = null;
-let _expanded = new Set();   // run ids whose detail row is open
+let _bgPollTimer = null;       // background poll when modal is closed
+let _expanded = new Set();     // run ids whose detail row is open
 let _dragWired = false;
+let _isOpen = false;
 
 // ── Open / close ─────────────────────────────────────────────────────────────
 
@@ -18,7 +21,9 @@ export function openSubagentMonitor() {
   const modal = document.getElementById('subagent-monitor-modal');
   if (!modal) return;
   modal.classList.remove('hidden');
+  _isOpen = true;
   _wireDrag();
+  _stopBgPolling();
   _startPolling();
   _refresh();
 }
@@ -26,7 +31,9 @@ export function openSubagentMonitor() {
 export function closeSubagentMonitor() {
   const modal = document.getElementById('subagent-monitor-modal');
   if (modal) modal.classList.add('hidden');
+  _isOpen = false;
   _stopPolling();
+  _startBgPolling();
 }
 
 // ── Drag wiring ───────────────────────────────────────────────────────────────
@@ -57,11 +64,45 @@ function _wireDrag() {
 
 function _startPolling() {
   _stopPolling();
-  _pollTimer = setInterval(_refresh, POLL_MS);
+  _pollTimer = setInterval(_refresh, POLL_OPEN_MS);
 }
 
 function _stopPolling() {
   if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
+}
+
+function _startBgPolling() {
+  _stopBgPolling();
+  _bgPollTimer = setInterval(_refreshBadgeOnly, POLL_CLOSED_MS);
+}
+
+function _stopBgPolling() {
+  if (_bgPollTimer) { clearInterval(_bgPollTimer); _bgPollTimer = null; }
+}
+
+async function _refreshBadgeOnly() {
+  try {
+    const res = await fetch(`${API}/api/subagent/runs`, { credentials: 'same-origin' });
+    if (!res.ok) return;
+    const data = await res.json();
+    const runs = data.runs || [];
+    _updateBadgeFromRuns(runs);
+  } catch (_) {}
+}
+
+function _updateBadgeFromRuns(runs) {
+  const badge = document.getElementById('sa-running-badge');
+  const running = runs.filter(r => r.status === 'running').length;
+  if (badge) {
+    badge.textContent = running > 0 ? `${running} running` : '';
+    badge.style.display = running > 0 ? '' : 'none';
+  }
+  // Modal badge
+  const modalBadge = document.getElementById('sa-running-badge-modal');
+  if (modalBadge) {
+    modalBadge.textContent = running > 0 ? `${running} running` : '';
+    modalBadge.style.display = running > 0 ? '' : 'none';
+  }
 }
 
 async function _refresh() {
@@ -137,9 +178,11 @@ function _detailRow(run) {
     </table>
   ` : '<div style="opacity:0.4;font-size:11px;padding:4px 6px">No tool calls</div>';
 
-  const responseBlock = run.response
-    ? `<div style="margin-top:8px"><div style="font-size:10px;opacity:0.5;margin-bottom:3px">Response</div><pre style="font-size:11px;white-space:pre-wrap;word-break:break-word;max-height:120px;overflow-y:auto;background:var(--bg2,#111);border-radius:4px;padding:6px;margin:0">${_esc(run.response)}</pre></div>`
-    : '';
+  const responseText = run.response || '';
+  const isStreaming = run.status === 'running' && responseText;
+  const responseBlock = (responseText || isStreaming)
+    ? `<div style="margin-top:8px"><div style="font-size:10px;opacity:0.5;margin-bottom:3px">Response${isStreaming ? ' <span class="sa-stream-cursor">▌</span>' : ''}</div><pre style="font-size:11px;white-space:pre-wrap;word-break:break-word;max-height:200px;overflow-y:auto;background:var(--bg2,#111);border-radius:4px;padding:6px;margin:0">${_esc(responseText)}</pre></div>`
+    : (run.status === 'running' ? '<div style="margin-top:8px;font-size:11px;opacity:0.4">Generating…</div>' : '');
 
   const errorBlock = run.error
     ? `<div style="margin-top:6px;color:var(--red,#f55);font-size:11px">Error: ${_esc(run.error)}</div>`
@@ -158,16 +201,17 @@ function _detailRow(run) {
   `;
 }
 
+function _displayLabel(run) {
+  // Show label if set, otherwise truncate prompt
+  const text = run.label || run.prompt || '';
+  return _esc(text.slice(0, 80));
+}
+
 function _render(runs) {
   const list = document.getElementById('sa-runs-list');
   if (!list) return;
 
-  const badge = document.getElementById('sa-running-badge');
-  const running = runs.filter(r => r.status === 'running').length;
-  if (badge) {
-    badge.textContent = running > 0 ? `${running} running` : '';
-    badge.style.display = running > 0 ? '' : 'none';
-  }
+  _updateBadgeFromRuns(runs);
 
   if (!runs.length) {
     list.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:24px;opacity:0.4;font-size:12px">No runs yet</td></tr>';
@@ -180,11 +224,12 @@ function _render(runs) {
     const fmtBtn = canFormat
       ? `<button class="sa-fmt-btn" data-run-id="${_esc(run.id)}" title="Format to Editor" style="background:none;border:none;cursor:pointer;opacity:0.4;font-size:12px;padding:0 4px;line-height:1;" onclick="event.stopPropagation()">⬆</button>`
       : '';
+    const labelTip = run.label ? ` title="${_esc(run.prompt)}"` : '';
     return `
       <tr class="sa-run-row" data-run-id="${_esc(run.id)}" style="cursor:pointer;border-bottom:1px solid var(--border,#2a2a2a)">
         <td style="padding:6px 8px;white-space:nowrap">${_statusIcon(run.status)}</td>
         <td style="padding:6px 8px;font-family:monospace;font-size:11px;white-space:nowrap;max-width:120px;overflow:hidden;text-overflow:ellipsis" title="${_esc(run.model)}">${_esc(run.model)}</td>
-        <td style="padding:6px 8px;font-size:11px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${_esc(run.prompt)}">${_esc(run.prompt.slice(0, 80))}</td>
+        <td style="padding:6px 8px;font-size:11px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"${labelTip}>${_displayLabel(run)}</td>
         <td style="padding:6px 8px;font-size:11px">${_toolChips(run.tool_calls)}</td>
         <td style="padding:6px 8px;font-size:11px;white-space:nowrap;opacity:0.6">${_originTime(run)}</td>
         <td style="padding:6px 8px;font-size:11px;white-space:nowrap;opacity:0.6">${_elapsed(run)}</td>
@@ -246,6 +291,9 @@ export function initSubagentMonitor() {
 
   const refreshBtn = document.getElementById('sa-refresh-btn');
   if (refreshBtn) refreshBtn.addEventListener('click', _refresh);
+
+  // Background poll keeps the sidebar badge alive even when monitor is closed
+  _startBgPolling();
 }
 
 initSubagentMonitor();
