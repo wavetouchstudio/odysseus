@@ -509,6 +509,7 @@ async function _deleteEmailAndAdvance(em, card, opts = {}) {
   _renderGrid();
   _libCacheWriteBack();
   showToast('Moved to Trash');
+  if (_backToInboxIfEmpty()) return;
   if (!wasExpanded || !nextUid) return;
   const grid = document.getElementById('email-lib-grid');
   const nextCard = grid?.querySelector(`.doclib-card[data-uid="${CSS.escape(String(nextUid))}"]`);
@@ -652,6 +653,40 @@ function _resetEmailListForFreshLoad() {
 function _loadEmailsFresh() {
   _resetEmailListForFreshLoad();
   return _loadEmails({ force: true, useCache: false });
+}
+
+// Reset the library view back to the default Inbox / All view, clearing
+// any active folder, filter, search, or attachment-only toggle, then reload.
+function _resetToInboxView() {
+  state._libFolder = 'INBOX';
+  state._libFilter = 'all';
+  state._libHasAttachments = false;
+  state._libSearch = '';
+  const folderEl = document.getElementById('email-lib-folder');
+  if (folderEl) folderEl.value = 'INBOX';
+  const filterEl = document.getElementById('email-lib-filter');
+  if (filterEl) filterEl.value = 'all';
+  const searchEl = document.getElementById('email-lib-search');
+  if (searchEl) searchEl.value = '';
+  document.getElementById('email-attach-btn')?.classList.remove('active');
+  document.getElementById('email-undone-btn')?.classList.remove('active');
+  document.getElementById('email-reminder-btn')?.classList.remove('active');
+  _syncUnreadWindowGlow();
+  _syncReminderClearButton();
+  _loadEmailsFresh();
+}
+
+// After a mutation (delete/archive/move/etc.) leaves the current view empty,
+// jump back to Inbox/All instead of leaving the user staring at a blank
+// "No emails" pane on whatever folder/filter/search they had active.
+function _backToInboxIfEmpty() {
+  if (state._libEmails.length > 0) return false;
+  if (state._libFolder === 'INBOX' && state._libFilter === 'all'
+    && !state._libHasAttachments && !(state._libSearch || '').trim()) {
+    return false;
+  }
+  _resetToInboxView();
+  return true;
 }
 
 export function prewarmEmailLibrary({ delay = 2500 } = {}) {
@@ -4579,6 +4614,7 @@ function _showReaderMoreMenu(em, card, reader, anchor) {
     state._libEmails = state._libEmails.filter(e => String(e.uid) !== String(em.uid));
     _renderGrid();
     _libCacheWriteBack();
+    if (_backToInboxIfEmpty()) return;
     if (!nextUid) return;
     // After _renderGrid, the card nodes are fresh — re-resolve and expand.
     const grid = document.getElementById('email-lib-grid');
@@ -4872,6 +4908,7 @@ async function _cleanBySender(sender) {
       });
       _renderGrid();
       _libCacheWriteBack();
+      _backToInboxIfEmpty();
     } else {
       showToast(`Error: ${data.error || 'Unknown error'}`);
     }
@@ -4965,6 +5002,7 @@ function _showCardMenu(em, anchor) {
         state._libEmails = state._libEmails.filter(e => String(e.uid) !== String(em.uid));
         _renderGrid();
         _libCacheWriteBack();
+        _backToInboxIfEmpty();
       },
     });
   } else {
@@ -4985,6 +5023,7 @@ function _showCardMenu(em, anchor) {
         state._libEmails = state._libEmails.filter(e => String(e.uid) !== String(em.uid));
         _renderGrid();
         _libCacheWriteBack();
+        _backToInboxIfEmpty();
       },
     });
   }
@@ -5055,6 +5094,7 @@ function _showCardMenu(em, anchor) {
       state._libEmails = state._libEmails.filter(e => String(e.uid) !== String(em.uid));
       _renderGrid();
       _libCacheWriteBack();
+      _backToInboxIfEmpty();
     }},
   );
 
@@ -5277,6 +5317,7 @@ async function _bulkAction(action) {
   state._selectMode = false;
   _updateBulkBar();
   _renderGrid();
+  _backToInboxIfEmpty();
   if (failedReadSync > 0) {
     showToast(`Failed to update ${failedReadSync} email${failedReadSync === 1 ? '' : 's'}`);
   }

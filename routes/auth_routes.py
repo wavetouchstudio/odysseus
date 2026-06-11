@@ -459,6 +459,118 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
         _save_settings(current)
         return current
 
+    # ---- Tailscale status / connect-disconnect (admin-managed) ----
+
+    def _tailscale_bin():
+        import shutil
+        tailscale_bin = shutil.which("tailscale")
+        if not tailscale_bin and os.name == "nt":
+            _candidate = r"C:\Program Files\Tailscale\tailscale.exe"
+            if os.path.exists(_candidate):
+                tailscale_bin = _candidate
+        return tailscale_bin
+
+    def _tailscale_status_dict():
+        import json as _json
+        import subprocess
+
+        tailscale_bin = _tailscale_bin()
+        if not tailscale_bin:
+            return {"installed": False, "running": False}
+
+        try:
+            proc = subprocess.run(
+                [tailscale_bin, "status", "--json"],
+                capture_output=True, text=True, timeout=5,
+            )
+            data = _json.loads(proc.stdout)
+        except Exception as e:
+            return {"installed": True, "running": False, "error": str(e)}
+
+        backend_state = data.get("BackendState", "Unknown")
+        self_node = data.get("Self") or {}
+        peers = data.get("Peer") or {}
+        return {
+            "installed": True,
+            "running": backend_state == "Running",
+            "backend_state": backend_state,
+            "hostname": self_node.get("HostName"),
+            "dns_name": (self_node.get("DNSName") or "").rstrip("."),
+            "tailscale_ips": self_node.get("TailscaleIPs") or [],
+            "tailnet": (data.get("CurrentTailnet") or {}).get("Name"),
+            "peer_count": len(peers),
+            "peers_online": sum(1 for p in peers.values() if p.get("Online")),
+        }
+
+    @router.get("/tailscale/status")
+    async def tailscale_status(request: Request):
+        """Admin only: report local Tailscale connection status.
+
+        Shells out to the `tailscale` CLI (`tailscale status --json`).
+        Returns installed/running flags plus this node's tailnet IPs and
+        hostname so the admin panel can show "is the tunnel up" at a glance.
+        """
+        user = _get_current_user(request)
+        if not user or not auth_manager.is_admin(user):
+            raise HTTPException(403, "Admin only")
+        return _tailscale_status_dict()
+
+    @router.post("/tailscale/up")
+    async def tailscale_up(request: Request):
+        """Admin only: bring the local Tailscale interface up (`tailscale up`).
+
+        Reconnects using the existing device auth — does not re-prompt for
+        login. If the daemon refuses (e.g. needs root), the failure is
+        returned as `error` rather than raised, so the panel can show it.
+        """
+        user = _get_current_user(request)
+        if not user or not auth_manager.is_admin(user):
+            raise HTTPException(403, "Admin only")
+
+        import subprocess
+        tailscale_bin = _tailscale_bin()
+        if not tailscale_bin:
+            return {"installed": False, "running": False}
+
+        try:
+            proc = subprocess.run(
+                [tailscale_bin, "up"],
+                capture_output=True, text=True, timeout=20,
+            )
+            if proc.returncode != 0:
+                return {**_tailscale_status_dict(), "error": (proc.stderr or proc.stdout).strip()}
+        except Exception as e:
+            return {**_tailscale_status_dict(), "error": str(e)}
+        return _tailscale_status_dict()
+
+    @router.post("/tailscale/down")
+    async def tailscale_down(request: Request):
+        """Admin only: take the local Tailscale interface down (`tailscale down`).
+
+        Severs this device's tailnet connection — remote access stops
+        working until `tailscale up` is run again (e.g. from the local
+        machine, or the panel's toggle while still connected).
+        """
+        user = _get_current_user(request)
+        if not user or not auth_manager.is_admin(user):
+            raise HTTPException(403, "Admin only")
+
+        import subprocess
+        tailscale_bin = _tailscale_bin()
+        if not tailscale_bin:
+            return {"installed": False, "running": False}
+
+        try:
+            proc = subprocess.run(
+                [tailscale_bin, "down"],
+                capture_output=True, text=True, timeout=20,
+            )
+            if proc.returncode != 0:
+                return {**_tailscale_status_dict(), "error": (proc.stderr or proc.stdout).strip()}
+        except Exception as e:
+            return {**_tailscale_status_dict(), "error": str(e)}
+        return _tailscale_status_dict()
+
     # ---- Integrations CRUD ----
 
     # Run migration on startup
