@@ -84,6 +84,40 @@ def _normalize_dsml(text: str) -> str:
     t = re.sub(rf"<\s*/\s*{_DSML_PIPES}\s*DSML\s*{_DSML_PIPES}\s*parameter\s*>", "</parameter>", t, flags=re.IGNORECASE)
     return t
 
+# Pattern 6: pseudo-Harmony tool-call syntax leaking into content when a
+# local model (seen from gemma/gpt-oss family models) ignores the
+# fenced-code-block convention it was given, e.g.:
+#   <|tool_call>call:obsidian_write_file{content: "...", path: "..."}<tool_call|>
+# Pipe characters may be ascii '|' or fullwidth '｜'; tolerate either.
+_PSEUDO_HARMONY_PIPES = r"[｜|]+"
+_PSEUDO_HARMONY_TOOL_CALL_RE = re.compile(
+    rf"<\s*{_PSEUDO_HARMONY_PIPES}\s*tool_call\s*>\s*call\s*:\s*(\w+)\s*(\{{[\s\S]*?\}})\s*"
+    rf"<\s*tool_call\s*{_PSEUDO_HARMONY_PIPES}\s*>",
+    re.IGNORECASE,
+)
+
+
+def _jsobj_to_json(s: str) -> str:
+    """Best-effort convert a JS-object literal (unquoted keys) to JSON."""
+    return re.sub(r'([{,]\s*)([A-Za-z_]\w*)\s*:', r'\1"\2":', s)
+
+
+def _parse_pseudo_harmony_tool_call(name: str, body: str) -> Optional["ToolBlock"]:
+    try:
+        args = json.loads(_jsobj_to_json(body))
+    except (json.JSONDecodeError, TypeError):
+        return None
+    if not isinstance(args, dict):
+        return None
+    name = name.lower()
+    # Obsidian MCP tool names get emitted bare instead of the namespaced
+    # mcp__<server>__<tool> form expected by the execution pipeline.
+    if name.startswith("obsidian_"):
+        return ToolBlock(f"mcp__obsidian__{name}", json.dumps(args))
+    from src.tool_schemas import function_call_to_tool_block
+    return function_call_to_tool_block(name, json.dumps(args))
+
+
 # Map model tool names to our tool types
 _TOOL_NAME_MAP = {
     "shell": "bash",
@@ -393,6 +427,13 @@ def parse_tool_blocks(text: str) -> List[ToolBlock]:
             if block:
                 blocks.append(block)
 
+    # Pattern 6: pseudo-Harmony <|tool_call>call:NAME{...}<tool_call|>
+    if not blocks:
+        for m in _PSEUDO_HARMONY_TOOL_CALL_RE.finditer(text):
+            block = _parse_pseudo_harmony_tool_call(m.group(1), m.group(2))
+            if block:
+                blocks.append(block)
+
     return blocks
 
 
@@ -405,6 +446,7 @@ def strip_tool_blocks(text: str) -> str:
     cleaned = _TOOL_CALL_RE.sub('', cleaned)
     cleaned = _XML_TOOL_CALL_RE.sub('', cleaned)
     cleaned = _TOOL_CODE_RE.sub('', cleaned)
+    cleaned = _PSEUDO_HARMONY_TOOL_CALL_RE.sub('', cleaned)
     # Strip bare <invoke> blocks not wrapped in <tool_call>
     cleaned = re.sub(r'<invoke\s+name=["\'].*?</invoke>', '', cleaned, flags=re.DOTALL | re.IGNORECASE)
     cleaned = re.sub(r'\n{3,}', '\n\n', cleaned)

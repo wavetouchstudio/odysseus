@@ -68,6 +68,7 @@ _AGENT_RULES = """\
 ## Rules
 - Only use tools when needed. Don't search for things you already know.
 - These exact tags execute automatically. For showing code examples, use ```shell, ```sh, ```py, etc. instead.
+- ONLY the ```toolname fenced-code-block format above is recognized. Do NOT emit `<tool_call>`, `<|tool_call|>`, `<invoke>`, `[TOOL_CALL]`, or a `tool_calls` JSON array — those are different formats from other systems and will NOT execute here, even if that's your trained default for "calling a tool".
 - Multiple tool blocks per response OK. 60s timeout per tool, 10K char output limit.
 - Code/content >15 lines → ```create_document (NOT in chat). Short snippets OK in chat.
 - Editing an existing document: ALWAYS use ```edit_document with FIND/REPLACE blocks. Do NOT rewrite the whole document with ```update_document unless genuinely changing more than half of it.

@@ -145,8 +145,8 @@
     "audited_at": 1780798940.2127075
   },
   "deadlyjrmint@gmail.com::clean-chat-history": {
-    "uses": 24,
-    "last_used": 1781209395,
+    "uses": 27,
+    "last_used": 1781285606,
     "necessity": {
       "necessary": true,
       "redundant_with": [],
@@ -175,6 +175,18 @@
       },
       {
         "ts": 1781209395,
+        "session_id": null
+      },
+      {
+        "ts": 1781235178,
+        "session_id": null
+      },
+      {
+        "ts": 1781285050,
+        "session_id": null
+      },
+      {
+        "ts": 1781285606,
         "session_id": null
       }
     ]
@@ -261,12 +273,18 @@
     "audited_at": 1780820811.4017797
   },
   "deadlyjrmint@gmail.com::qna-time": {
-    "uses": 1,
-    "last_used": 1780940636,
+    "uses": 2,
+    "last_used": 1781235733,
     "audit_verdict": "pass",
     "audit_by_teacher": false,
     "audit_worker_model": "gemma4:12b",
-    "audited_at": 1780820989.884866
+    "audited_at": 1780820989.884866,
+    "events": [
+      {
+        "ts": 1781235733,
+        "session_id": null
+      }
+    ]
   },
   "deadlyjrmint@gmail.com::youre-not-getting-it": {
     "uses": 1,
