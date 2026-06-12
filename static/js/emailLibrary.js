@@ -655,9 +655,11 @@ function _loadEmailsFresh() {
   return _loadEmails({ force: true, useCache: false });
 }
 
-// Reset the library view back to the default Inbox / All view, clearing
-// any active folder, filter, search, or attachment-only toggle, then reload.
-function _resetToInboxView() {
+// Reset the library view back to the default Inbox / All-accounts view,
+// clearing any active account, folder, filter, search, or attachment-only
+// toggle, then reload.
+async function _resetToInboxView() {
+  state._libAccountId = null;
   state._libFolder = 'INBOX';
   state._libFilter = 'all';
   state._libHasAttachments = false;
@@ -673,15 +675,19 @@ function _resetToInboxView() {
   document.getElementById('email-reminder-btn')?.classList.remove('active');
   _syncUnreadWindowGlow();
   _syncReminderClearButton();
+  _publishActiveAccount();
+  _renderAccountsStrip();
+  await _loadFolders({ resetMissing: true });
   _loadEmailsFresh();
 }
 
 // After a mutation (delete/archive/move/etc.) leaves the current view empty,
-// jump back to Inbox/All instead of leaving the user staring at a blank
-// "No emails" pane on whatever folder/filter/search they had active.
+// jump back to the combined All-accounts Inbox view instead of leaving the
+// user staring at a blank "No emails" pane on whatever account/folder/filter
+// /search they had active.
 function _backToInboxIfEmpty() {
   if (state._libEmails.length > 0) return false;
-  if (state._libFolder === 'INBOX' && state._libFilter === 'all'
+  if (!state._libAccountId && state._libFolder === 'INBOX' && state._libFilter === 'all'
     && !state._libHasAttachments && !(state._libSearch || '').trim()) {
     return false;
   }
@@ -4267,6 +4273,9 @@ async function _openEmailWindow(em, folder) {
             <button class="memory-toolbar-btn reader-icon-btn" data-act="ai-reply" title="${data.cached_ai_reply ? 'AI Reply (cached draft ready)' : 'AI Reply (suggest a draft)'}">${_aiReplyIcon(data)}<span class="reader-btn-label">AI reply</span></button>
             <button class="memory-toolbar-btn reader-icon-btn" data-act="summarize" title="Summarize">${_summaryIcon(data)}<span class="reader-btn-label">Summary</span></button>
             <button class="memory-toolbar-btn reader-icon-btn" data-act="from-sender" title="Search text in this thread"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg><span class="reader-btn-label">Search</span></button>
+            <button class="memory-toolbar-btn reader-icon-btn" data-act="unsubscribe" title="Unsubscribe">${_unsubIcon}<span class="reader-btn-label">Unsub</span></button>
+            <button class="memory-toolbar-btn reader-icon-btn reader-icon-btn-danger" data-act="block-sender" title="Block sender">${_blockIcon}<span class="reader-btn-label">Block</span></button>
+            <button class="memory-toolbar-btn reader-icon-btn reader-icon-btn-danger" data-act="delete-permanent" title="Delete permanently">${_deleteForeverIcon}<span class="reader-btn-label">Delete</span></button>
             <div class="email-reader-more-wrap" style="position:relative">
               <button class="memory-toolbar-btn reader-icon-btn" data-act="more" title="More actions"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg><span class="reader-btn-label">More</span></button>
             </div>
@@ -4316,6 +4325,26 @@ async function _openEmailWindow(em, folder) {
       // the next sibling; the standalone window has none so we just pass
       // bodyEl as a stand-in.
       try { _showReaderMoreMenu(em, modal, bodyEl, ev.currentTarget); } catch {}
+    });
+    bodyEl.querySelector('[data-act="unsubscribe"]')?.addEventListener('click', async (ev) => {
+      ev.stopPropagation();
+      try { await _unsubscribeFromEmail(em); } catch {}
+    });
+    bodyEl.querySelector('[data-act="block-sender"]')?.addEventListener('click', async (ev) => {
+      ev.stopPropagation();
+      try { await _blockSenderForEmail(em); } catch {}
+      modal.remove();
+    });
+    bodyEl.querySelector('[data-act="delete-permanent"]')?.addEventListener('click', async (ev) => {
+      ev.stopPropagation();
+      const ok = await _deleteEmailPermanently(em);
+      if (!ok) return;
+      await _animateEmailCardRemoval([em.uid]);
+      state._libEmails = state._libEmails.filter(e => String(e.uid) !== String(em.uid));
+      _renderGrid();
+      _libCacheWriteBack();
+      _backToInboxIfEmpty();
+      modal.remove();
     });
   } catch (err) {
     bodyEl.innerHTML = `<div style="color:var(--red,#e55);padding:16px;">Failed to load: ${_esc(String(err))}</div>`;
@@ -4599,7 +4628,6 @@ function _showReaderMoreMenu(em, card, reader, anchor) {
   const _archIcon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="5" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/></svg>';
   const _spamIcon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
   const _trashIcon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>';
-  const _deleteForeverIcon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="14" y2="15"/><line x1="14" y1="11" x2="10" y2="15"/></svg>';
   const _bellIcon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>';
   const _newTabIcon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>';
   const _checkIcon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
@@ -4743,44 +4771,14 @@ function _showReaderMoreMenu(em, card, reader, anchor) {
     },
     {
       label: 'Unsubscribe',
-      icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/><line x1="1" y1="1" x2="23" y2="23"/></svg>',
-      action: async () => {
-        const ok = await styledConfirm(
-          `Auto-unsubscribe from "${_extractSenderDomain(_emFromAddr(em)) || _emFromAddr(em) || 'this sender'}"?\n\nWaveTouchOS will find and click the unsubscribe link in this email.`,
-          { confirmText: 'Unsubscribe', cancelText: 'Cancel' }
-        );
-        if (!ok) return;
-        showToast('Finding unsubscribe link…');
-        try {
-          const resp = await fetch(
-            `${API_BASE}/api/email/unsubscribe/${em.uid}?folder=${encodeURIComponent(state._libFolder)}${_acct()}`,
-            { method: 'POST' }
-          );
-          const data = await resp.json();
-          if (data.success && data.open_in_browser && data.url) {
-            window.open(data.url, '_blank');
-            showToast('Opened unsubscribe page — finish there if it asks for confirmation');
-          } else if (data.success) {
-            showToast(`Unsubscribed via one-click (HTTP ${data.status})`);
-          } else if (data.requires_action && data.url) {
-            window.open(data.url, '_blank');
-            showToast('Opened mailto unsubscribe link');
-          } else {
-            showToast(data.message || 'No unsubscribe link found');
-          }
-        } catch (e) {
-          showToast('Unsubscribe request failed');
-        }
-      },
+      icon: _unsubIcon,
+      action: async () => { await _unsubscribeFromEmail(em); },
     },
     {
       label: 'Block sender',
-      icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>',
+      icon: _blockIcon,
       danger: true,
-      action: async () => {
-        const domain = _extractSenderDomain(_emFromAddr(em));
-        await _cleanBySender(domain || _emFromAddr(em) || '');
-      },
+      action: async () => { await _blockSenderForEmail(em); },
     },
     {
       label: 'Move to Trash',
@@ -4803,21 +4801,8 @@ function _showReaderMoreMenu(em, card, reader, anchor) {
       icon: _deleteForeverIcon,
       danger: true,
       action: async () => {
-        const subject = em.subject || '(no subject)';
-        const ok = await styledConfirm(
-          `Permanently delete "${subject}"? This cannot be undone.`,
-          { confirmText: 'Delete', cancelText: 'Cancel', danger: true }
-        );
+        const ok = await _deleteEmailPermanently(em);
         if (!ok) return;
-        try {
-          const res = await fetch(`${API_BASE}/api/email/delete-permanent/${em.uid}?folder=${encodeURIComponent(state._libFolder)}${_acct()}`, { method: 'DELETE' });
-          const data = await res.json().catch(() => ({}));
-          if (!res.ok || data.success === false) throw new Error(data.error || `HTTP ${res.status}`);
-        } catch (e) {
-          console.error(e);
-          showToast('Failed to permanently delete email');
-          return;
-        }
         await closeAndRemove();
       },
     },
@@ -4880,6 +4865,65 @@ function _extractSenderDomain(fromStr) {
   const addr = match ? match[1] : fromStr.trim();
   const atIdx = addr.indexOf('@');
   return atIdx >= 0 ? addr.slice(atIdx + 1).toLowerCase() : addr.toLowerCase();
+}
+
+const _unsubIcon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
+const _blockIcon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>';
+const _deleteForeverIcon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="14" y2="15"/><line x1="14" y1="11" x2="10" y2="15"/></svg>';
+
+// Shared action handlers used by both the reader "More" dropdown and the
+// pop-out window's toolbar buttons.
+async function _unsubscribeFromEmail(em) {
+  const ok = await styledConfirm(
+    `Auto-unsubscribe from "${_extractSenderDomain(_emFromAddr(em)) || _emFromAddr(em) || 'this sender'}"?\n\nWaveTouchOS will find and click the unsubscribe link in this email.`,
+    { confirmText: 'Unsubscribe', cancelText: 'Cancel' }
+  );
+  if (!ok) return;
+  showToast('Finding unsubscribe link…');
+  try {
+    const resp = await fetch(
+      `${API_BASE}/api/email/unsubscribe/${em.uid}?folder=${encodeURIComponent(state._libFolder)}${_acct()}`,
+      { method: 'POST' }
+    );
+    const data = await resp.json();
+    if (data.success && data.open_in_browser && data.url) {
+      window.open(data.url, '_blank');
+      showToast('Opened unsubscribe page — finish there if it asks for confirmation');
+    } else if (data.success) {
+      showToast(`Unsubscribed via one-click (HTTP ${data.status})`);
+    } else if (data.requires_action && data.url) {
+      window.open(data.url, '_blank');
+      showToast('Opened mailto unsubscribe link');
+    } else {
+      showToast(data.message || 'No unsubscribe link found');
+    }
+  } catch (e) {
+    showToast('Unsubscribe request failed');
+  }
+}
+
+async function _blockSenderForEmail(em) {
+  const domain = _extractSenderDomain(_emFromAddr(em));
+  await _cleanBySender(domain || _emFromAddr(em) || '');
+}
+
+async function _deleteEmailPermanently(em) {
+  const subject = em.subject || '(no subject)';
+  const ok = await styledConfirm(
+    `Permanently delete "${subject}"? This cannot be undone.`,
+    { confirmText: 'Delete', cancelText: 'Cancel', danger: true }
+  );
+  if (!ok) return false;
+  try {
+    const res = await fetch(`${API_BASE}/api/email/delete-permanent/${em.uid}?folder=${encodeURIComponent(state._libFolder)}${_acct()}`, { method: 'DELETE' });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.success === false) throw new Error(data.error || `HTTP ${res.status}`);
+  } catch (e) {
+    console.error(e);
+    showToast('Failed to permanently delete email');
+    return false;
+  }
+  return true;
 }
 
 async function _cleanBySender(sender) {

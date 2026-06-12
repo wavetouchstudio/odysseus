@@ -47,7 +47,98 @@ export function toggleBrowser() {
 
 export function isBrowserOpen() { return _isOpen; }
 
-export default { openBrowser, closeBrowser, toggleBrowser, isBrowserOpen };
+// Folder-tree "pick a destination" dialog — used by the document editor's
+// "Save to Obsidian (new file)" action. Resolves to the chosen vault path
+// (e.g. "Ideas/my-note.md"), or null if the user cancels.
+export async function openSaveToVaultDialog(defaultFilename = 'Untitled.md') {
+  if (!_allFiles.length) await _loadVault();
+  return new Promise((resolve) => {
+    const openFolders = new Set();
+    let selectedFolder = '';
+
+    const overlay = document.createElement('div');
+    overlay.className = 'obsidian-picker-overlay';
+    overlay.innerHTML = `
+      <div class="obsidian-picker-modal">
+        <div class="obsidian-picker-header">Save to Obsidian</div>
+        <div class="obsidian-picker-tree" id="obsidian-picker-tree"></div>
+        <div class="obsidian-picker-path-row">
+          <span class="obsidian-picker-path-label">Folder:</span>
+          <span class="obsidian-picker-selected-folder" id="obsidian-picker-folder">(vault root)</span>
+        </div>
+        <div class="obsidian-picker-filename-row">
+          <input id="obsidian-picker-filename" class="obsidian-picker-filename" type="text" value="${_esc(defaultFilename)}" />
+        </div>
+        <div class="obsidian-picker-actions">
+          <button type="button" class="obsidian-picker-btn obsidian-picker-cancel">Cancel</button>
+          <button type="button" class="obsidian-picker-btn obsidian-picker-save">Save</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+
+    const treeEl = overlay.querySelector('#obsidian-picker-tree');
+    const folderLabel = overlay.querySelector('#obsidian-picker-folder');
+    const filenameInput = overlay.querySelector('#obsidian-picker-filename');
+
+    function renderPickerNode(node, prefix) {
+      let html = '';
+      const folders = Object.keys(node).filter(k => k !== '_files').sort();
+      for (const folder of folders) {
+        const path = prefix ? `${prefix}/${folder}` : folder;
+        const open = openFolders.has(path);
+        const sel = selectedFolder === path;
+        html += `<div class="obsidian-br-folder-row obsidian-picker-folder-row${sel ? ' selected' : ''}" data-path="${_esc(path)}">
+          <span class="obsidian-br-folder-arrow">${open ? '▾' : '▸'}</span>
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.5;flex-shrink:0"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+          <span class="obsidian-br-folder-name">${_esc(folder)}</span>
+          <span style="flex:1"></span>
+          <button type="button" class="obsidian-picker-folder-select">Select</button>
+        </div>`;
+        if (open) html += `<div class="obsidian-br-folder-children">${renderPickerNode(node[folder], path)}</div>`;
+      }
+      return html;
+    }
+
+    function render() {
+      treeEl.innerHTML = renderPickerNode(_tree, '') || '<div class="obsidian-br-status">Vault is empty.</div>';
+      treeEl.querySelectorAll('.obsidian-picker-folder-row').forEach(row => {
+        row.addEventListener('click', e => {
+          const path = row.dataset.path;
+          if (e.target.closest('.obsidian-picker-folder-select')) {
+            selectedFolder = path;
+            folderLabel.textContent = path || '(vault root)';
+            render();
+            return;
+          }
+          if (openFolders.has(path)) openFolders.delete(path); else openFolders.add(path);
+          render();
+        });
+      });
+    }
+    render();
+
+    function cleanup() { overlay.remove(); }
+    overlay.querySelector('.obsidian-picker-cancel').addEventListener('click', () => { cleanup(); resolve(null); });
+    overlay.addEventListener('click', e => { if (e.target === overlay) { cleanup(); resolve(null); } });
+    overlay.querySelector('.obsidian-picker-save').addEventListener('click', () => {
+      let filename = filenameInput.value.trim();
+      if (!filename) return;
+      if (!filename.endsWith('.md')) filename += '.md';
+      const path = selectedFolder ? `${selectedFolder}/${filename}` : filename;
+      cleanup();
+      resolve(path);
+    });
+    filenameInput.addEventListener('keydown', e => {
+      if (e.key === 'Enter') overlay.querySelector('.obsidian-picker-save').click();
+      else if (e.key === 'Escape') { cleanup(); resolve(null); }
+    });
+    filenameInput.focus();
+    filenameInput.select();
+  });
+}
+
+export default { openBrowser, closeBrowser, toggleBrowser, isBrowserOpen, openSaveToVaultDialog };
 
 // ── Build panel ───────────────────────────────────────────────────────────────
 
@@ -391,7 +482,7 @@ async function _openInEditor(path) {
   const docRes = await fetch(`${API}/api/document`, {
     method: 'POST', credentials: 'same-origin',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ title, content: data.content || '', language: 'markdown', session_id: sessionId || undefined }),
+    body: JSON.stringify({ title, content: data.content || '', language: 'markdown', session_id: sessionId || undefined, obsidian_source_path: path }),
   });
   if (!docRes.ok) throw new Error(`Document create failed: HTTP ${docRes.status}`);
   const doc = await docRes.json();

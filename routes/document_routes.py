@@ -111,6 +111,7 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
                 # being deleted. Fall back to the session's owner when the
                 # request is unauthenticated (single-user / localhost bypass).
                 owner=user or (session.owner if session else None),
+                obsidian_source_path=req.obsidian_source_path,
             )
             ver = DocumentVersion(
                 id=ver_id,
@@ -604,6 +605,9 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
                 doc.title = req.title
             if req.language is not None:
                 doc.language = req.language
+            if req.obsidian_source_path is not None:
+                # Empty string = clear the link
+                doc.obsidian_source_path = req.obsidian_source_path or None
             if req.session_id is not None:
                 # Empty string = unlink from session
                 doc.session_id = req.session_id if req.session_id else None

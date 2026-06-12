@@ -214,6 +214,9 @@ class Document(TimestampMixin, Base):
     source_email_folder      = Column(String, nullable=True)
     source_email_account_id  = Column(String, nullable=True)
     source_email_message_id  = Column(String, nullable=True, index=True)
+    # Provenance: vault-relative path this doc was pulled from (if any),
+    # so the editor's "Append to source" button knows where to write back.
+    obsidian_source_path     = Column(String, nullable=True)
 
     session  = relationship("Session", backref=backref("documents", cascade="save-update, merge"))
     versions = relationship("DocumentVersion", back_populates="document",
@@ -1215,6 +1218,20 @@ def _migrate_add_doc_source_email_cols():
     except Exception as e:
         logging.getLogger(__name__).warning(f"doc source-email migration: {e}")
 
+
+def _migrate_add_doc_obsidian_source_path():
+    """Add obsidian_source_path column to documents (Append-to-source flow)."""
+    try:
+        with engine.connect() as conn:
+            existing = {r[1] for r in conn.execute(text("PRAGMA table_info(documents)"))}
+            if "obsidian_source_path" not in existing:
+                conn.execute(text("ALTER TABLE documents ADD COLUMN obsidian_source_path VARCHAR"))
+                logging.getLogger(__name__).info("Added obsidian_source_path column to documents")
+            conn.commit()
+    except Exception as e:
+        logging.getLogger(__name__).warning(f"doc obsidian-source-path migration: {e}")
+
+
 def _migrate_add_task_automation_columns():
     """Add automation columns to scheduled_tasks table if missing."""
     new_cols = {
@@ -1608,6 +1625,7 @@ def init_db():
     _migrate_assign_legacy_owner()
     _migrate_add_tidy_verdict()
     _migrate_add_doc_source_email_cols()
+    _migrate_add_doc_obsidian_source_path()
     _migrate_add_oauth_config()
     _migrate_add_task_automation_columns()
     _migrate_add_disabled_tools()

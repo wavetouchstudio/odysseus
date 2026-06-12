@@ -6186,6 +6186,8 @@ import * as Modals from './modalManager.js';
       sourceEmailFolder:    doc.source_email_folder || null,
       sourceEmailAccountId: doc.source_email_account_id || null,
       sourceEmailMessageId: doc.source_email_message_id || null,
+      // Vault-relative path this doc syncs to (Append-to-source flow)
+      obsidianSourcePath: doc.obsidian_source_path || null,
     });
   }
 
@@ -8365,6 +8367,87 @@ import * as Modals from './modalManager.js';
     fi.click();
   }
 
+  // Returns the current selection's text if non-empty, otherwise the whole
+  // document's content — used by the "Append to Obsidian" actions.
+  function _selectionOrFullContent() {
+    const ta = document.getElementById('doc-editor-textarea');
+    const full = (ta ? ta.value : null) ?? docs.get(activeDocId)?.content ?? '';
+    if (ta && ta.selectionStart !== ta.selectionEnd) {
+      return full.slice(ta.selectionStart, ta.selectionEnd);
+    }
+    return full;
+  }
+
+  // Append the editor's selection (or whole doc) to the vault file this
+  // document was opened from, separated by a mandatory "---" break.
+  async function _appendToObsidianSource() {
+    const doc = docs.get(activeDocId);
+    const path = doc?.obsidianSourcePath;
+    if (!path) return;
+    const text = _selectionOrFullContent();
+    try {
+      const res = await fetch(`${API_BASE}/api/codex/obsidian/files/${encodeURIComponent(path)}`, {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: `---\n\n${text}` }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (uiModule) uiModule.showToast(`Appended to ${path}`);
+    } catch (err) {
+      if (uiModule && uiModule.showError) uiModule.showError('Append to Obsidian failed: ' + (err.message || err));
+    }
+  }
+
+  // Overwrite the vault file this document was opened from with the full
+  // current content (not just the selection — a full save, not an append).
+  async function _saveToObsidianSource() {
+    const doc = docs.get(activeDocId);
+    const path = doc?.obsidianSourcePath;
+    if (!path) return;
+    const ta = document.getElementById('doc-editor-textarea');
+    const text = (ta ? ta.value : null) ?? doc?.content ?? '';
+    try {
+      const res = await fetch(`${API_BASE}/api/codex/obsidian/files/${encodeURIComponent(path)}`, {
+        method: 'PUT', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: text }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (uiModule) uiModule.showToast(`Saved to ${path}`);
+    } catch (err) {
+      if (uiModule && uiModule.showError) uiModule.showError('Save to Obsidian failed: ' + (err.message || err));
+    }
+  }
+
+  // Save the editor's selection (or whole doc) to a new vault file, picked
+  // via the Obsidian folder-tree dialog, and adopt it as the doc's source.
+  async function _saveDocToObsidianVault() {
+    const doc = docs.get(activeDocId);
+    if (!doc) return;
+    const { openSaveToVaultDialog } = await import('./obsidianBrowser.js');
+    const defaultName = `${_slug(doc.title || 'Untitled')}.md`;
+    const path = await openSaveToVaultDialog(defaultName);
+    if (!path) return;
+    const text = _selectionOrFullContent();
+    try {
+      const res = await fetch(`${API_BASE}/api/codex/obsidian/files/${encodeURIComponent(path)}`, {
+        method: 'PUT', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: text }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const patchRes = await fetch(`${API_BASE}/api/document/${doc.id}`, {
+        method: 'PATCH', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ obsidian_source_path: path }),
+      });
+      if (patchRes.ok) doc.obsidianSourcePath = path;
+      if (uiModule) uiModule.showToast(`Saved to ${path}`);
+    } catch (err) {
+      if (uiModule && uiModule.showError) uiModule.showError('Save to Obsidian failed: ' + (err.message || err));
+    }
+  }
+
   function showExportMenu(e, anchorRect) {
     if (e) e.stopPropagation();
     // Remove existing menu if any
@@ -8412,8 +8495,14 @@ import * as Modals from './modalManager.js';
     options.push(
       { label: 'Export Markdown', fn: exportDocument },
       { label: 'Print as PDF', fn: exportAsPdf },
-      { label: 'Export as Word', fn: exportAsDocx },
+      { label: 'Export as Word', fn: exportAsDocx, _divider: true },
     );
+    const obsidianSourcePath = docs.get(activeDocId)?.obsidianSourcePath;
+    if (obsidianSourcePath) {
+      options.push({ label: `Save to source (${obsidianSourcePath.split('/').pop()})`, fn: _saveToObsidianSource });
+      options.push({ label: `Append to Obsidian (${obsidianSourcePath.split('/').pop()})`, fn: _appendToObsidianSource });
+    }
+    options.push({ label: 'Save to Obsidian (new file)', fn: _saveDocToObsidianVault });
 
     options.forEach(opt => {
       const item = document.createElement('button');

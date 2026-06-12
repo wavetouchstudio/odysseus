@@ -1138,6 +1138,20 @@ async def _startup_event():
 
 async def _shutdown_event():
     logger.info("Application shutting down...")
+    # Cancel long-lived startup tasks (MCP connect, keepalive loops, etc.)
+    # before disconnecting MCP servers. Without this, a stdio MCP connect
+    # left mid-flight gets torn down by the event loop closing instead of
+    # via its own task, which anyio reports as noisy "cancel scope in a
+    # different task" tracebacks on exit.
+    _startup_tasks: list[asyncio.Task] = getattr(app.state, "_startup_tasks", [])
+    for t in _startup_tasks:
+        if not t.done():
+            t.cancel()
+    for t in _startup_tasks:
+        try:
+            await t
+        except (asyncio.CancelledError, Exception):
+            pass
     if upload_cleanup_task:
         upload_cleanup_task.cancel()
         try:

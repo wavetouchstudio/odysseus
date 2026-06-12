@@ -28822,6 +28822,9 @@ body.doc-find-active mark.doc-find-mark.current {
 /* The "More" (kebab) reader button — accent-colored so it stands out as the
    actions-menu trigger. When the dropdown is open we add .reader-more-active
    for a filled tint, matching the toggle states elsewhere. */
+.memory-toolbar-btn.reader-icon-btn-danger {
+  color: var(--red, #e55);
+}
 .memory-toolbar-btn.reader-icon-btn[data-act="more"] {
   color: var(--accent, var(--red));
 }
@@ -36210,4 +36213,102 @@ body.theme-frosted .modal {
 @keyframes note-card-flash-anim {
   0%   { box-shadow: 0 0 0 2px var(--accent, var(--red)); }
   100% { box-shadow: 0 0 0 2px transparent; }
+}
+
+/* "Save to Obsidian" folder-tree picker dialog (obsidianBrowser.js). */
+.obsidian-picker-overlay {
+  position: fixed; inset: 0; z-index: 10000;
+  background: rgba(0,0,0,0.5);
+  display: flex; align-items: center; justify-content: center;
+}
+.obsidian-picker-modal {
+  width: min(440px, 92vw);
+  max-height: 80vh;
+  background: var(--panel, var(--bg));
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+  display: flex; flex-direction: column; gap: 10px;
+  color: var(--fg);
+}
+.obsidian-picker-header {
+  font-size: 13px; font-weight: 600;
+}
+.obsidian-picker-tree {
+  flex: 1;
+  min-height: 120px;
+  max-height: 40vh;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px;
+}
+.obsidian-picker-folder-row {
+  display: flex; align-items: center; gap: 4px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.obsidian-picker-folder-row:hover {
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
+}
+.obsidian-picker-folder-row.selected {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+.obsidian-br-folder-children {
+  margin-left: 14px;
+}
+.obsidian-picker-folder-select {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg);
+  cursor: pointer;
+}
+.obsidian-picker-folder-select:hover {
+  border-color: var(--accent);
+}
+.obsidian-picker-path-row,
+.obsidian-picker-filename-row {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 12px;
+}
+.obsidian-picker-selected-folder {
+  opacity: 0.8;
+}
+.obsidian-picker-filename {
+  flex: 1;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--fg);
+  padding: 6px 8px;
+  font-size: 12px;
+  outline: none;
+}
+.obsidian-picker-filename:focus {
+  border-color: var(--accent, var(--fg));
+}
+.obsidian-picker-actions {
+  display: flex; gap: 8px; justify-content: flex-end;
+}
+.obsidian-picker-btn {
+  padding: 6px 14px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 12px;
+  cursor: pointer;
+}
+.obsidian-picker-btn:hover {
+  border-color: var(--accent);
+}
+.obsidian-picker-save {
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  border-color: var(--accent);
 }

@@ -161,7 +161,9 @@ class McpManager:
 
                 # Discover tools
                 tools_result = await session.list_tools()
-            except Exception:
+            except BaseException:
+                # Close in this task (not via GC during interpreter shutdown) —
+                # anyio cancel scopes must exit in the task that entered them.
                 await stack.aclose()
                 raise
             tools = []
@@ -218,7 +220,9 @@ class McpManager:
 
                 # Discover tools
                 tools_result = await session.list_tools()
-            except Exception:
+            except BaseException:
+                # Close in this task (not via GC during interpreter shutdown) —
+                # anyio cancel scopes must exit in the task that entered them.
                 await stack.aclose()
                 raise
             tools = []

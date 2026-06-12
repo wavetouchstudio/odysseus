@@ -24,6 +24,7 @@ class DocumentCreate(BaseModel):
     title: str = "Untitled"
     language: Optional[str] = None
     content: str = ""
+    obsidian_source_path: Optional[str] = None
 
 class DocumentUpdate(BaseModel):
     content: str
@@ -33,6 +34,7 @@ class DocumentPatch(BaseModel):
     title: Optional[str] = None
     language: Optional[str] = None
     session_id: Optional[str] = None  # link/unlink document to a session
+    obsidian_source_path: Optional[str] = None  # vault path this doc syncs to
 
 
 # ---- Helpers ----
@@ -55,6 +57,8 @@ def _doc_to_dict(doc: Document) -> Dict[str, Any]:
         "source_email_folder":     getattr(doc, "source_email_folder", None),
         "source_email_account_id": getattr(doc, "source_email_account_id", None),
         "source_email_message_id": getattr(doc, "source_email_message_id", None),
+        # Vault-relative path this doc was pulled from, if any.
+        "obsidian_source_path":    getattr(doc, "obsidian_source_path", None),
     }
 
 def _version_to_dict(v: DocumentVersion) -> Dict[str, Any]:
