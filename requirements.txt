@@ -43,3 +43,12 @@ qrcode[pil]
 croniter
 pytest
 pytest-asyncio
+
+# Local TTS ("local" provider in services/tts/tts_service.py) — Kokoro-82M.
+# CPU build of torch (small, no CUDA download); Kokoro runs fine on CPU for
+# this model size. GPU is used automatically if CUDA is available instead.
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch
+kokoro
+misaki[en]
+soundfile
