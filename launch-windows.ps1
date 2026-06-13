@@ -129,7 +129,18 @@ if (-not (Find-GitBash)) {
     Write-Host "      https://git-scm.com/download/win" -ForegroundColor Yellow
 }
 
-# 6. Start the server (use `python -m uvicorn` - bare `uvicorn` may not be on PATH)
+# 6. Kill any process already bound to $Port (e.g. a leftover instance from
+#    a previous run) so the new server can bind cleanly.
+$existing = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue
+foreach ($conn in $existing) {
+    $pid_ = $conn.OwningProcess
+    if ($pid_ -and $pid_ -ne $PID) {
+        Write-Step ("Stopping existing process on port {0} (PID {1})" -f $Port, $pid_)
+        Stop-Process -Id $pid_ -Force -ErrorAction SilentlyContinue
+    }
+}
+
+# 7. Start the server (use `python -m uvicorn` - bare `uvicorn` may not be on PATH)
 Write-Step ("Starting Odysseus at http://{0}:{1}" -f $BindHost, $Port)
 Write-Host "Press Ctrl+C to stop."
 Write-Host ""
