@@ -845,6 +845,15 @@ def setup_chat_routes(
 
             full_response = ""
             last_metrics = None
+            # Reasoning ("thinking") deltas are flagged thinking:true and forwarded
+            # live for the thinking-indicator UI, but excluded from full_response
+            # below — otherwise they'd appear as plain text in the saved reply.
+            # Buffer them here and fold them back in as <think time="Ns">...</think>
+            # immediately before the next real-content delta, so
+            # _extract_thinking_meta can pull them into metadata.thinking and the
+            # "View thinking process" section survives a reload.
+            _think_buf = ""
+            _think_start = None
 
             # Configured fallback chain for the default chat model. Tried in
             # order if the session's primary model fails before producing
@@ -921,10 +930,19 @@ def setup_chat_routes(
                                 data = json.loads(chunk[6:])
                                 if "delta" in data:
                                     # Reasoning tokens arrive flagged thinking:true.
-                                    # Forward them so the client can show a thinking
-                                    # indicator, but don't fold them into the saved
-                                    # reply (mirrors the rewrite path below).
-                                    if not data.get("thinking"):
+                                    # Buffer them and fold into full_response as a
+                                    # <think> block ahead of the next real delta so
+                                    # they're persisted (see comment above).
+                                    if data.get("thinking"):
+                                        if not _think_buf:
+                                            _think_start = time.time()
+                                        _think_buf += data["delta"]
+                                    else:
+                                        if _think_buf:
+                                            _think_elapsed = time.time() - (_think_start or time.time())
+                                            full_response += f'<think time="{_think_elapsed:.1f}">{_think_buf}</think>\n\n'
+                                            _think_buf = ""
+                                            _think_start = None
                                         full_response += data["delta"]
                                         _stream_set(session, partial=full_response)
                                     yield chunk
@@ -958,6 +976,11 @@ def setup_chat_routes(
                         elif chunk.startswith("event: "):
                             yield chunk
                         elif chunk == "data: [DONE]\n\n":
+                            if _think_buf:
+                                _think_elapsed = time.time() - (_think_start or time.time())
+                                full_response += f'<think time="{_think_elapsed:.1f}">{_think_buf}</think>\n\n'
+                                _think_buf = ""
+                                _think_start = None
                             # Generate fallback metrics if LLM didn't send usage
                             if not last_metrics and full_response:
                                 _elapsed = time.time() - _chat_start
@@ -999,6 +1022,11 @@ def setup_chat_routes(
                             _stream_set(session, status="done")
                             yield chunk
                 except (asyncio.CancelledError, GeneratorExit):
+                    if _think_buf:
+                        _think_elapsed = time.time() - (_think_start or time.time())
+                        full_response += f'<think time="{_think_elapsed:.1f}">{_think_buf}</think>\n\n'
+                        _think_buf = ""
+                        _think_start = None
                     if full_response:
                         logger.info("Client disconnected mid-stream (chat mode) for session %s, saving partial (%d chars)", session, len(full_response))
                         _stopped_content, _stopped_md = clean_thinking_for_save(full_response, {"stopped": True, "model": sess.model})
@@ -1025,13 +1053,22 @@ def setup_chat_routes(
                         _max_rounds = _DEFAULT_ROUNDS
                     _max_rounds = max(1, min(_max_rounds, 200))
 
+                    # An unbounded max_tokens (preset value 0) lets a reasoning
+                    # model "think" forever in a single round with no real
+                    # content ever produced — the round then never finishes
+                    # (or only finishes after the ~20min round deadline), and
+                    # since nothing was streamed there's nothing to save on
+                    # disconnect. Agent-mode rounds always get a cap; chat mode
+                    # (outside this branch) is unaffected.
+                    _agent_max_tokens = ctx.preset.max_tokens or int(get_setting("agent_max_tokens", 4096) or 4096)
+
                     async for chunk in stream_agent_loop(
                         sess.endpoint_url,
                         sess.model,
                         messages,
                         headers=sess.headers,
                         temperature=ctx.preset.temperature,
-                        max_tokens=ctx.preset.max_tokens,
+                        max_tokens=_agent_max_tokens,
                         prompt_type=preset_id,
                         max_tool_calls=_tool_budget,
                         max_rounds=_max_rounds,
@@ -1049,9 +1086,20 @@ def setup_chat_routes(
                                 data = json.loads(chunk[6:])
                                 if "delta" in data:
                                     # Reasoning tokens arrive flagged thinking:true.
-                                    # Forward them for the live indicator, but keep
-                                    # them out of the saved reply (same as chat mode).
-                                    if not data.get("thinking"):
+                                    # Buffer them and fold into full_response as a
+                                    # <think> block ahead of the next real delta so
+                                    # each round's thinking is persisted (see
+                                    # comment near full_response init above).
+                                    if data.get("thinking"):
+                                        if not _think_buf:
+                                            _think_start = time.time()
+                                        _think_buf += data["delta"]
+                                    else:
+                                        if _think_buf:
+                                            _think_elapsed = time.time() - (_think_start or time.time())
+                                            full_response += f'<think time="{_think_elapsed:.1f}">{_think_buf}</think>\n\n'
+                                            _think_buf = ""
+                                            _think_start = None
                                         full_response += data["delta"]
                                         _stream_set(session, partial=full_response)
                                     yield chunk
@@ -1085,6 +1133,11 @@ def setup_chat_routes(
                         elif chunk.startswith("event: "):
                             yield chunk
                         elif chunk == "data: [DONE]\n\n":
+                            if _think_buf:
+                                _think_elapsed = time.time() - (_think_start or time.time())
+                                full_response += f'<think time="{_think_elapsed:.1f}">{_think_buf}</think>\n\n'
+                                _think_buf = ""
+                                _think_start = None
                             if full_response:
                                 _saved_id = save_assistant_response(
                                     sess, session_manager, session, full_response, last_metrics,
@@ -1117,6 +1170,11 @@ def setup_chat_routes(
                     # outer finally from running and left _active_streams
                     # with a stale entry).
                     try:
+                        if _think_buf:
+                            _think_elapsed = time.time() - (_think_start or time.time())
+                            full_response += f'<think time="{_think_elapsed:.1f}">{_think_buf}</think>\n\n'
+                            _think_buf = ""
+                            _think_start = None
                         if full_response:
                             logger.info("Client disconnected mid-stream for session %s, saving partial response (%d chars)", session, len(full_response))
                             _stopped_content2, _stopped_md2 = clean_thinking_for_save(full_response, {"stopped": True, "model": sess.model})

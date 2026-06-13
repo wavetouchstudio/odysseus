@@ -101,6 +101,10 @@ DEFAULT_SETTINGS = {
     "research_run_timeout_seconds": 1800,
     "agent_max_tool_calls": 0,
     "agent_max_rounds": 20,  # per-message agent step cap (clamped 1..200)
+    # Per-round generation cap for agent mode when the active preset's
+    # max_tokens is 0 (unbounded) — prevents reasoning models from
+    # "thinking" forever in a single round with no real content produced.
+    "agent_max_tokens": 4096,
     "agent_input_token_budget": 6000,
     # Ceiling on the *auto-derived* input budget that #1230 introduced. Has
     # no effect when `agent_input_token_budget` is explicitly set (the user's

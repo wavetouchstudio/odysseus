@@ -560,16 +560,22 @@ def _mcp_matches_relevant(qualified: str, relevant: set) -> bool:
     return len(parts) == 3 and parts[2] in relevant
 
 
-def _select_api_tool_schemas(function_schemas, mcp_schemas, relevant_tools, needs_admin):
+def _select_api_tool_schemas(function_schemas, mcp_schemas, relevant_tools, needs_admin, restrict_mcp=False):
     if relevant_tools:
         base = [s for s in function_schemas
                 if s.get("function", {}).get("name") in relevant_tools]
-        # When caller scopes tools, filter MCP schemas too — sending all 100+ MCP
-        # schemas blows the context window of smaller models (issue: subagent route).
-        filtered_mcp = [s for s in mcp_schemas
-                        if _mcp_matches_relevant(
-                            s.get("function", {}).get("name", ""), relevant_tools)]
-        return base + filtered_mcp
+        if restrict_mcp:
+            # Caller explicitly scoped tools (e.g. subagent route) — filter MCP
+            # schemas too, since sending all 100+ MCP schemas blows the context
+            # window of smaller models.
+            filtered_mcp = [s for s in mcp_schemas
+                            if _mcp_matches_relevant(
+                                s.get("function", {}).get("name", ""), relevant_tools)]
+            return base + filtered_mcp
+        # RAG/keyword-derived scoping doesn't know about MCP tool names
+        # (e.g. Unreal MCP), so always offer the model every connected
+        # MCP tool regardless of relevant_tools.
+        return base + list(mcp_schemas)
     elif needs_admin:
         base = list(function_schemas)
     else:
@@ -1547,6 +1553,7 @@ async def stream_agent_loop(
 
     # RAG-based tool selection: retrieve relevant tools for this query.
     # If caller provided a pre-computed set (e.g. task_scheduler), use that.
+    _caller_scoped_tools = relevant_tools is not None
     _relevant_tools = relevant_tools
     _t1 = time.time()
     if _relevant_tools:
@@ -1783,6 +1790,7 @@ async def stream_agent_loop(
     # signatures + consecutive no-text tool rounds to bail early.
     _recent_call_sigs = collections.deque(maxlen=6)
     _stuck_rounds = 0
+    _no_text_rounds = 0
     _tool_type_counts: collections.Counter = collections.Counter()
     _THINK_RE = re.compile(r'<think>.*?</think>', re.DOTALL | re.IGNORECASE)
     _force_answer = False  # set by loop-breaker → next round runs with NO tools
@@ -1850,6 +1858,7 @@ async def stream_agent_loop(
             # schemas — see _select_api_tool_schemas (#1789).
             all_tool_schemas = _select_api_tool_schemas(
                 FUNCTION_TOOL_SCHEMAS, mcp_schemas, _relevant_tools, _needs_admin,
+                restrict_mcp=_caller_scoped_tools,
             )
             if disabled_tools:
                 all_tool_schemas = [
@@ -2222,10 +2231,19 @@ async def stream_agent_loop(
             _stuck_rounds += 1
         else:
             _stuck_rounds = 0
+        # Distinct-but-never-converging exploration (e.g. probing every tool
+        # in a namespace one-by-one without ever writing an answer) doesn't
+        # trip _stuck_rounds since each call is "new" — catch it separately
+        # by counting consecutive tool-only rounds regardless of repeats.
+        if not _real_text:
+            _no_text_rounds += 1
+        else:
+            _no_text_rounds = 0
         _runaway = next((t for t, n in _tool_type_counts.items() if n >= 15), None)
-        if _stuck_rounds >= 4 or _runaway:
+        if _stuck_rounds >= 4 or _no_text_rounds >= 6 or _runaway:
             reason = (f"calling {_runaway} over and over" if _runaway
-                      else "repeating the same tool calls without new progress")
+                      else "repeating the same tool calls without new progress" if _stuck_rounds >= 4
+                      else "exploring tools for many rounds without writing an answer")
             logger.warning(f"[agent] loop-breaker tripped on round {round_num} ({reason}); sig={_sig[:80]!r}")
             # The model has been executing tools, so its results are already
             # in context. Force ONE tool-free round to converge: write the
