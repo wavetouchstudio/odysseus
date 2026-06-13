@@ -754,7 +754,21 @@ def _ping_endpoint(base_url: str, api_key: str = None, timeout: float = 1.5) -> 
 
     try:
         r = httpx.get(base, headers=headers, timeout=timeout, verify=llm_verify())
-        return _result_from_response(r)
+        result = _result_from_response(r)
+        if result["reachable"]:
+            return result
+        last_error = result.get("error")
+    except Exception as e:
+        last_error = str(e)[:120]
+
+    # Some OpenAI-compatible servers (e.g. unsloth) 404 on the bare base URL
+    # but serve /models fine — retry there before giving up.
+    try:
+        r = httpx.get(base.rstrip("/") + "/models", headers=headers, timeout=timeout, verify=llm_verify())
+        result = _result_from_response(r)
+        if result["reachable"]:
+            return result
+        last_error = result.get("error")
     except Exception as e:
         last_error = str(e)[:120]
 
