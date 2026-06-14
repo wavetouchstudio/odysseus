@@ -1845,6 +1845,63 @@ async def do_api_call(content: str) -> Dict:
 # Notes / checklists management tool
 # ---------------------------------------------------------------------------
 
+async def do_obsidian_vault(content: str, owner: Optional[str] = None) -> Dict:
+    """Handle obsidian_vault tool calls: direct Obsidian Local REST API access
+    (read/write/append/list/search/delete), bypassing the MCP obsidian server."""
+    from src import obsidian_direct
+
+    try:
+        args = _parse_tool_args(content)
+    except ValueError:
+        return {"error": "Invalid JSON arguments", "exit_code": 1}
+
+    action = (args.get("action") or "").strip().lower()
+    path = (args.get("path") or "").strip()
+
+    try:
+        if action == "read":
+            if not path:
+                return {"error": "path is required for action=read", "exit_code": 1}
+            text = await obsidian_direct.read_file(path)
+            return {"path": path, "content": text}
+
+        elif action == "write":
+            if not path:
+                return {"error": "path is required for action=write", "exit_code": 1}
+            await obsidian_direct.write_file(path, args.get("content") or "")
+            return {"ok": True, "path": path, "action": "write"}
+
+        elif action == "append":
+            if not path:
+                return {"error": "path is required for action=append", "exit_code": 1}
+            await obsidian_direct.append_file(path, args.get("content") or "")
+            return {"ok": True, "path": path, "action": "append"}
+
+        elif action == "list":
+            files = await obsidian_direct.list_vault()
+            return {"files": files}
+
+        elif action == "search":
+            query = (args.get("query") or "").strip()
+            if not query:
+                return {"error": "query is required for action=search", "exit_code": 1}
+            return await obsidian_direct.search(query)
+
+        elif action == "delete":
+            if not path:
+                return {"error": "path is required for action=delete", "exit_code": 1}
+            await obsidian_direct.delete_file(path)
+            return {"ok": True, "path": path, "action": "delete"}
+
+        else:
+            return {"error": f"Unknown action '{action}'. Use read/write/append/list/search/delete.", "exit_code": 1}
+
+    except obsidian_direct.ObsidianNotConfigured as e:
+        return {"error": str(e), "exit_code": 1}
+    except obsidian_direct.ObsidianUnavailable as e:
+        return {"error": f"Obsidian API error ({e.status_code}): {e}", "exit_code": 1}
+
+
 async def do_manage_notes(content: str, owner: Optional[str] = None) -> Dict:
     """Handle manage_notes tool calls: CRUD on notes and checklists."""
     import uuid as _uuid

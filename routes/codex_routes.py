@@ -13,13 +13,12 @@ from io import BytesIO
 from pathlib import Path
 from typing import Any
 
-import httpx
-
 from fastapi import APIRouter, BackgroundTasks, Body, HTTPException, Request
 from fastapi.responses import Response, StreamingResponse
 
 from src.auth_helpers import require_user
 from src.tool_implementations import do_manage_notes
+from src import obsidian_direct
 
 
 COOKBOOK_READ_SCOPES = {"cookbook:read", "cookbook:launch"}
@@ -761,58 +760,27 @@ def setup_codex_routes(
 
     # ── Obsidian vault endpoints ──────────────────────────────────────────────
 
-    def _obsidian_client() -> tuple[str, dict]:
-        api_key = os.getenv("OBSIDIAN_API_KEY", "")
-        port = os.getenv("OBSIDIAN_PORT", "27123")
-        host = os.getenv("OBSIDIAN_HOST", "127.0.0.1")
-        if not api_key:
-            raise HTTPException(503, "OBSIDIAN_API_KEY not configured")
-        base = f"http://{host}:{port}"
-        headers = {"Authorization": f"Bearer {api_key}", "Accept": "application/json"}
-        return base, headers
-
     @router.get("/obsidian/vault")
     async def obsidian_list_vault(request: Request):
         _scope_owner(request, OBSIDIAN_READ_SCOPES)
-        base, headers = _obsidian_client()
-        all_files: list[str] = []
-
-        async def _walk(prefix: str, client: httpx.AsyncClient) -> None:
-            url = f"{base}/vault/{prefix}" if prefix else f"{base}/vault/"
-            r = await client.get(url, headers=headers)
-            if r.status_code != 200:
-                return
-            for item in r.json().get("files", []):
-                full = f"{prefix}{item}"
-                if item.endswith("/"):
-                    await _walk(full, client)
-                else:
-                    all_files.append(full)
-
-        async with httpx.AsyncClient(timeout=30) as client:
-            r0 = await client.get(f"{base}/vault/", headers=headers)
-            if r0.status_code == 503 or r0.status_code == 404:
-                raise HTTPException(503, "Obsidian not connected")
-            if r0.status_code != 200:
-                raise HTTPException(r0.status_code, r0.text)
-            for item in r0.json().get("files", []):
-                if item.endswith("/"):
-                    await _walk(item, client)
-                else:
-                    all_files.append(item)
-
-        return {"files": all_files}
+        try:
+            files = await obsidian_direct.list_vault()
+        except obsidian_direct.ObsidianNotConfigured as e:
+            raise HTTPException(503, str(e))
+        except obsidian_direct.ObsidianUnavailable as e:
+            raise HTTPException(e.status_code, str(e))
+        return {"files": files}
 
     @router.get("/obsidian/files/{path:path}")
     async def obsidian_read_file(path: str, request: Request):
         _scope_owner(request, OBSIDIAN_READ_SCOPES)
-        base, headers = _obsidian_client()
-        hdrs = {**headers, "Accept": "text/markdown, application/json"}
-        async with httpx.AsyncClient(timeout=15) as client:
-            r = await client.get(f"{base}/vault/{path}", headers=hdrs)
-        if r.status_code != 200:
-            raise HTTPException(r.status_code, r.text)
-        return {"path": path, "content": r.text}
+        try:
+            content = await obsidian_direct.read_file(path)
+        except obsidian_direct.ObsidianNotConfigured as e:
+            raise HTTPException(503, str(e))
+        except obsidian_direct.ObsidianUnavailable as e:
+            raise HTTPException(e.status_code, str(e))
+        return {"path": path, "content": content}
 
     @router.get("/obsidian/raw/{path:path}")
     async def obsidian_read_file_raw(path: str, request: Request):
@@ -820,65 +788,62 @@ def setup_codex_routes(
         content type — for previewing/embedding binary files. Plain-text reads
         should use /obsidian/files/{path}, which decodes to a string."""
         _scope_owner(request, OBSIDIAN_READ_SCOPES)
-        base, headers = _obsidian_client()
-        hdrs = {k: v for k, v in headers.items() if k.lower() != "accept"}
-        async with httpx.AsyncClient(timeout=15) as client:
-            r = await client.get(f"{base}/vault/{path}", headers=hdrs)
-        if r.status_code != 200:
-            raise HTTPException(r.status_code, r.text)
+        try:
+            r = await obsidian_direct.read_file_raw(path)
+        except obsidian_direct.ObsidianNotConfigured as e:
+            raise HTTPException(503, str(e))
+        except obsidian_direct.ObsidianUnavailable as e:
+            raise HTTPException(e.status_code, str(e))
         media_type = r.headers.get("content-type", "application/octet-stream")
         return Response(content=r.content, media_type=media_type)
 
     @router.get("/obsidian/search")
     async def obsidian_search(query: str, request: Request, context_length: int = 100):
         _scope_owner(request, OBSIDIAN_READ_SCOPES)
-        base, headers = _obsidian_client()
-        async with httpx.AsyncClient(timeout=15) as client:
-            r = await client.post(
-                f"{base}/search/simple/",
-                headers=headers,
-                params={"query": query, "contextLength": context_length},
-            )
-        if r.status_code != 200:
-            raise HTTPException(r.status_code, r.text)
-        return r.json()
+        try:
+            return await obsidian_direct.search(query, context_length)
+        except obsidian_direct.ObsidianNotConfigured as e:
+            raise HTTPException(503, str(e))
+        except obsidian_direct.ObsidianUnavailable as e:
+            raise HTTPException(e.status_code, str(e))
 
     @router.post("/obsidian/files/{path:path}")
     async def obsidian_append_file(path: str, request: Request, body: dict = Body(...)):
         _scope_owner(request, OBSIDIAN_WRITE_SCOPES)
-        base, headers = _obsidian_client()
         content = body.get("content", "")
         if not content:
             raise HTTPException(400, "content required")
-        hdrs = {**headers, "Content-Type": "text/markdown"}
-        async with httpx.AsyncClient(timeout=15) as client:
-            r = await client.post(f"{base}/vault/{path}", headers=hdrs, content=content)
-        if r.status_code not in (200, 204):
-            raise HTTPException(r.status_code, r.text)
+        try:
+            await obsidian_direct.append_file(path, content)
+        except obsidian_direct.ObsidianNotConfigured as e:
+            raise HTTPException(503, str(e))
+        except obsidian_direct.ObsidianUnavailable as e:
+            raise HTTPException(e.status_code, str(e))
         return {"ok": True, "path": path}
 
     @router.put("/obsidian/files/{path:path}")
     async def obsidian_write_file(path: str, request: Request, body: dict = Body(...)):
         """Create or overwrite a file in the vault."""
         _scope_owner(request, OBSIDIAN_WRITE_SCOPES)
-        base, headers = _obsidian_client()
         content = body.get("content", "")
-        hdrs = {**headers, "Content-Type": "text/markdown"}
-        async with httpx.AsyncClient(timeout=15) as client:
-            r = await client.put(f"{base}/vault/{path}", headers=hdrs, content=content)
-        if r.status_code not in (200, 204):
-            raise HTTPException(r.status_code, r.text)
+        try:
+            await obsidian_direct.write_file(path, content)
+        except obsidian_direct.ObsidianNotConfigured as e:
+            raise HTTPException(503, str(e))
+        except obsidian_direct.ObsidianUnavailable as e:
+            raise HTTPException(e.status_code, str(e))
         return {"ok": True, "path": path}
 
     @router.delete("/obsidian/files/{path:path}")
     async def obsidian_delete_file(path: str, request: Request):
         """Delete a file from the vault."""
         _scope_owner(request, OBSIDIAN_WRITE_SCOPES)
-        base, headers = _obsidian_client()
-        async with httpx.AsyncClient(timeout=15) as client:
-            r = await client.delete(f"{base}/vault/{path}", headers=headers)
-        if r.status_code not in (200, 204):
-            raise HTTPException(r.status_code, r.text)
+        try:
+            await obsidian_direct.delete_file(path)
+        except obsidian_direct.ObsidianNotConfigured as e:
+            raise HTTPException(503, str(e))
+        except obsidian_direct.ObsidianUnavailable as e:
+            raise HTTPException(e.status_code, str(e))
         return {"ok": True, "path": path}
 
     return router

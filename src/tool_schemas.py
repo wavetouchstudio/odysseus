@@ -521,6 +521,25 @@ FUNCTION_TOOL_SCHEMAS = [
     {
         "type": "function",
         "function": {
+            "name": "obsidian_vault",
+            "description": "Fast direct access to the Obsidian vault via the Local REST API — bypasses the MCP obsidian server. Prefer this over obsidian_get_file_contents / obsidian_append_content / obsidian_list_files_in_vault / obsidian_list_files_in_dir / obsidian_simple_search / obsidian_patch_content. Supports true file overwrite via 'write' (MCP append cannot overwrite).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "action": {"type": "string",
+                               "enum": ["read", "write", "append", "list", "search", "delete"],
+                               "description": "read=get file content, write=create or overwrite a file, append=add to end of a file (creates if missing), list=recursively list all vault file paths, search=full-text search, delete=remove a file"},
+                    "path": {"type": "string", "description": "Vault-relative file path, e.g. '2 Scheduled/Unreal.md'. Required for read/write/append/delete."},
+                    "content": {"type": "string", "description": "File content for write/append."},
+                    "query": {"type": "string", "description": "Search query, required for action=search."}
+                },
+                "required": ["action"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "manage_notes",
             "description": "Manage notes and checklists (Google Keep-style): list, add, update, delete, toggle_item. IMPORTANT: For to-do lists / checklists, set note_type='checklist' and pass the items as the `checklist_items` array — do NOT serialize them into `content` as plain text. For freeform notes, use note_type='note' and put the body in `content`. `due_date` accepts natural language like 'tomorrow at 9am' (parsed in the user's timezone) and fires a notification — do not also create a calendar event for the same reminder.",
             "parameters": {
