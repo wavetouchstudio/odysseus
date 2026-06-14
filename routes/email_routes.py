@@ -3462,6 +3462,15 @@ def setup_email_routes():
             for key in ("imap_starttls", "enabled"):
                 if key in data:
                     setattr(row, key, bool(data[key]))
+            if "is_default" in data:
+                if bool(data["is_default"]):
+                    clear_q = db.query(EmailAccount).filter(EmailAccount.id != row.id)
+                    if owner:
+                        clear_q = clear_q.filter(EmailAccount.owner == owner)
+                    clear_q.update({EmailAccount.is_default: False})
+                    row.is_default = True
+                else:
+                    row.is_default = False
             # Passwords — only overwrite when a non-empty value is
             # provided. Stored encrypted; see src/secret_storage.py.
             from src.secret_storage import encrypt as _enc
