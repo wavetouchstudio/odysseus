@@ -110,8 +110,6 @@ async def _drain(session_id: str, agen: AsyncGenerator[str, None],
             run.status = "done"
     except asyncio.CancelledError:
         run.status = "stopped"
-        # Let the wrapped generator's own CancelledError handler run (it saves
-        # the partial response to the session).
         try:
             await agen.aclose()
         except Exception:

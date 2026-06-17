@@ -14,7 +14,7 @@ from pydantic import ValidationError
 
 from core.models import ChatMessage
 from src.request_models import ChatRequest
-from src.llm_core import llm_call_async, stream_llm, stream_llm_with_fallback
+from src.llm_core import llm_call_async, stream_llm, stream_llm_with_fallback, _supports_thinking
 from src.agent_loop import stream_agent_loop
 from src import agent_runs
 from src.model_context import estimate_tokens
@@ -1053,14 +1053,15 @@ def setup_chat_routes(
                         _max_rounds = _DEFAULT_ROUNDS
                     _max_rounds = max(1, min(_max_rounds, 200))
 
-                    # An unbounded max_tokens (preset value 0) lets a reasoning
-                    # model "think" forever in a single round with no real
-                    # content ever produced — the round then never finishes
-                    # (or only finishes after the ~20min round deadline), and
-                    # since nothing was streamed there's nothing to save on
-                    # disconnect. Agent-mode rounds always get a cap; chat mode
-                    # (outside this branch) is unaffected.
-                    _agent_max_tokens = ctx.preset.max_tokens or int(get_setting("agent_max_tokens", 4096) or 4096)
+                    # Agent-mode rounds get a token cap so a stuck reasoning model
+                    # can't spin forever. For thinking models the 4096 default is
+                    # too low — the model exhausts the budget inside <think> and
+                    # never produces a response or tool call. Use a larger cap so
+                    # it has room to think AND answer.
+                    _default_agent_tokens = int(get_setting("agent_max_tokens", 4096) or 4096)
+                    if _supports_thinking(sess.model) and not ctx.preset.max_tokens:
+                        _default_agent_tokens = max(_default_agent_tokens, 16384)
+                    _agent_max_tokens = ctx.preset.max_tokens or _default_agent_tokens
 
                     async for chunk in stream_agent_loop(
                         sess.endpoint_url,
