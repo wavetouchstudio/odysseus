@@ -60,6 +60,34 @@ YOUTUBE_CHANNELS = {
     "UCZ7AeeVbyslLM_8-nVy2B8Q": "SkillUp",
 }
 
+# Evergreen live-service/MMO-style titles that permanently camp the top of
+# Steam's concurrent-player chart (CS2, PUBG, GTA Online, etc). They drown out
+# anything actually moving, so they're excluded from the "Most Played" section.
+STEAM_EXCLUDE_APPIDS = {
+    730,      # Counter-Strike 2
+    570,      # Dota 2
+    578080,   # PUBG: BATTLEGROUNDS
+    252490,   # Rust
+    1172470,  # Apex Legends
+    271590,   # Grand Theft Auto V
+    1938090,  # Call of Duty: Modern Warfare II / Warzone
+    1203220,  # NARAKA: BLADEPOINT
+    359550,   # Rainbow Six Siege
+    236390,   # War Thunder
+    440,      # Team Fortress 2
+    221100,   # DayZ
+    230410,   # Warframe
+    438100,   # VRChat
+    1085660,  # Destiny 2
+    4000,     # Garry's Mod
+    1599340,  # Lost Ark
+    238960,   # Path of Exile
+    2694490,  # Path of Exile 2
+    304930,   # Unturned
+    218620,   # PAYDAY 2
+    431960,   # Wallpaper Engine (not even a game)
+}
+
 # Fetch transcript for videos published within this many hours
 TRANSCRIPT_WINDOW_HOURS = 48
 # Max words of transcript to include per video
@@ -105,16 +133,22 @@ def fetch_reddit_hot(subreddit: str, limit: int = 15) -> list[dict]:
 # ── Steam ─────────────────────────────────────────────────────────────────────
 
 def fetch_steam_top_played(limit: int = 15) -> list[dict]:
-    """Most-played games right now, by concurrent users (SteamSpy)."""
+    """Most-played games right now, by concurrent users (SteamSpy), with the
+    evergreen MMO/live-service chart-toppers (STEAM_EXCLUDE_APPIDS) filtered
+    out so what's left is games actually moving, not the same usual suspects."""
     try:
         raw = _fetch("https://steamspy.com/api.php?request=top100in2weeks", timeout=12)
         data = json.loads(raw)
         items = sorted(data.values(), key=lambda g: g.get("ccu", 0), reverse=True)
         results = []
-        for g in items[:limit]:
+        for g in items:
+            if g.get("appid") in STEAM_EXCLUDE_APPIDS:
+                continue
             name = g.get("name") or ""
             if name:
                 results.append({"name": name, "ccu": g.get("ccu", 0)})
+            if len(results) >= limit:
+                break
         return results
     except Exception as exc:
         print(f"  [warn] Steam top-played failed: {exc}", file=sys.stderr)
