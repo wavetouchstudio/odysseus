@@ -39,6 +39,14 @@ ALWAYS_AVAILABLE = frozenset({
     # Keeping the always-on set small leaves room in the ~16-tool
     # budget for manage_tasks / manage_calendar / etc.
     "list_served_models", "stop_served_model", "tail_serve_output",
+    # Reminders/TODOs ("remind me at 7pm to...") need this every time, not
+    # just when RAG happens to retrieve it. manage_notes (not manage_tasks!)
+    # is the tool with a due_date field that actually fires a notification —
+    # manage_tasks only has scheduled_time for recurring automation jobs. A
+    # missed RAG retrieval previously left the model with no reminder tool
+    # at all, or made it misuse manage_tasks and create a recurring job
+    # instead of a one-off reminder.
+    "manage_notes",
     # Serving is a core agent capability — keep these always available so
     # the router doesn't lose them on phrasings like "servic" / "fire up" / "boot".
     "serve_model", "serve_preset", "list_serve_presets",

@@ -183,8 +183,8 @@
     "audited_at": 1780798368.4935894
   },
   "deadlyjrmint@gmail.com::consolidate-skills": {
-    "uses": 2,
-    "last_used": 1780798391,
+    "uses": 3,
+    "last_used": 1781824947,
     "necessity": {
       "necessary": true,
       "redundant_with": [],
@@ -193,7 +193,13 @@
     "audit_verdict": "pass",
     "audit_by_teacher": false,
     "audit_worker_model": "lfm2.5:latest",
-    "audited_at": 1780798434.0467927
+    "audited_at": 1780798434.0467927,
+    "events": [
+      {
+        "ts": 1781824947,
+        "session_id": null
+      }
+    ]
   },
   "deadlyjrmint@gmail.com::read-content-from-a-specific-obsidian-directory": {
     "uses": 0,
