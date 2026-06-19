@@ -325,8 +325,8 @@
     "last_used": 1780948285
   },
   "deadlyjrmint@gmail.com::manage-obsidian-vault-notes-via-api": {
-    "uses": 0,
-    "last_used": null,
+    "uses": 1,
+    "last_used": 1781831856,
     "necessity": {
       "necessary": true,
       "redundant_with": [],
@@ -335,7 +335,13 @@
     "audit_verdict": "pass",
     "audit_by_teacher": false,
     "audit_worker_model": "gemma4:12b-it-qat",
-    "audited_at": 1781827628.696373
+    "audited_at": 1781827628.696373,
+    "events": [
+      {
+        "ts": 1781831856,
+        "session_id": null
+      }
+    ]
   },
   "deadlyjrmint@gmail.com::update-execute-plan-from-scheduled-backlog": {
     "uses": 0,
@@ -366,8 +372,8 @@
     "audited_at": 1781827858.1891391
   },
   "deadlyjrmint@gmail.com::set-reminder-via-reminder-tool": {
-    "uses": 0,
-    "last_used": null,
+    "uses": 1,
+    "last_used": 1781831856,
     "necessity": {
       "necessary": true,
       "redundant_with": [],
@@ -376,7 +382,13 @@
     "audit_verdict": "pass",
     "audit_by_teacher": false,
     "audit_worker_model": "gemma4:12b-it-qat",
-    "audited_at": 1781827925.892606
+    "audited_at": 1781827925.892606,
+    "events": [
+      {
+        "ts": 1781831856,
+        "session_id": null
+      }
+    ]
   },
   "deadlyjrmint@gmail.com::set-a-specific-reminder": {
     "uses": 0,
