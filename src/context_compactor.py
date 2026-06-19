@@ -39,6 +39,15 @@ COMPACT_THRESHOLD = 0.85  # Trigger compaction at 85% of context window
 SUMMARY_MAX_TOKENS = 1024
 SMALL_CONTEXT_LIMIT = 8192  # Models with context <= this get aggressive trimming
 
+# Sentinel agent_loop._assemble_prompt inserts right before the tool catalog
+# block (after the identity/behavior preamble, before the rules footer). Lets
+# trim_for_context truncate the LEAST important part (verbose preamble prose)
+# instead of blindly keeping the first N characters and silently discarding
+# every tool description — which is what made small local models report
+# "I don't see a tool list" while large-context cloud models (different
+# prompt path, never hit this trim) worked fine on the identical request.
+TOOL_CATALOG_MARKER = "\n\n## Available Tools\n\n"
+
 # Cursor-style self-summarization prompt — produces structured, dense summaries
 SELF_SUMMARY_SYSTEM_PROMPT = """You are summarizing a conversation to preserve context after compaction. Produce a structured summary that lets the conversation continue seamlessly.
 
@@ -220,11 +229,33 @@ def trim_for_context(messages: List[Dict], context_length: int, reserve_tokens: 
                 break
         return _sanitize_tool_messages(result + protected_msgs + convo_msgs)
 
-    # Still too big — truncate the first system message (but keep more than 500 chars)
+    # Still too big — truncate the first system message (but keep more than 500 chars).
+    # The tool catalog matters far more than preamble prose once we're this
+    # tight on budget, so if TOOL_CATALOG_MARKER is present, cut the preamble
+    # hard and preserve as much of the tool catalog as fits — trimming from
+    # its END (lowest-priority trailing rules/hints first) rather than
+    # discarding the catalog wholesale by keeping a naive head-slice.
     if essential_system:
         sys_text = essential_system[0].get("content", "")
         if len(sys_text) > 2000:
-            essential_system[0] = {"role": "system", "content": sys_text[:2000] + "\n[System prompt truncated for context limits]"}
+            marker_idx = sys_text.find(TOOL_CATALOG_MARKER)
+            if marker_idx != -1:
+                preamble = sys_text[:marker_idx]
+                catalog_and_rest = sys_text[marker_idx:]
+                preamble_kept = preamble[:500].rstrip() + ("\n[Preamble truncated for context limits]" if len(preamble) > 500 else "")
+                # budget already had protected_msgs subtracted (see `budget -=
+                # protected_tokens` above) — only convo_msgs is left to account for.
+                other_tokens = estimate_tokens(convo_msgs)
+                preamble_tokens = _message_text_token_estimate(preamble_kept)
+                catalog_budget_tokens = max(0, budget - other_tokens - preamble_tokens)
+                catalog_max_chars = max(0, int((catalog_budget_tokens - 16) / 0.3))
+                if len(catalog_and_rest) > catalog_max_chars:
+                    catalog_kept = catalog_and_rest[:catalog_max_chars].rstrip() + "\n[Tool catalog truncated for context limits]"
+                else:
+                    catalog_kept = catalog_and_rest
+                essential_system[0] = {"role": "system", "content": preamble_kept + catalog_kept}
+            else:
+                essential_system[0] = {"role": "system", "content": sys_text[:2000] + "\n[System prompt truncated for context limits]"}
             trimmed = essential_system + convo_msgs
             if estimate_tokens(trimmed) <= budget:
                 return _sanitize_tool_messages(essential_system + protected_msgs + convo_msgs)

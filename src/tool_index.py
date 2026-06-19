@@ -37,16 +37,17 @@ ALWAYS_AVAILABLE = frozenset({
     # presets, serve, cached, servers) are CONTEXTUAL — they fire via
     # keyword hints when the user is actually talking about cookbook.
     # Keeping the always-on set small leaves room in the ~16-tool
-    # budget for manage_tasks / manage_calendar / etc.
+    # budget for manage_tasks / manage_calendar / etc. manage_notes is
+    # deliberately NOT here even though it's the right tool for reminders —
+    # it's already force-included by the keyword-fallback safety net in
+    # agent_loop.py (search "manage_notes" there) and by RAG retrieval on
+    # note/reminder phrasing. Adding it here would inflate the prompt size
+    # on every single agent turn regardless of topic, which on tight-budget
+    # local models risks tripping context_compactor's blunt system-message
+    # truncation (trim_for_context, src/context_compactor.py ~line 224) and
+    # silently dropping the ENTIRE tool catalog from the prompt — worse than
+    # the problem this was meant to fix.
     "list_served_models", "stop_served_model", "tail_serve_output",
-    # Reminders/TODOs ("remind me at 7pm to...") need this every time, not
-    # just when RAG happens to retrieve it. manage_notes (not manage_tasks!)
-    # is the tool with a due_date field that actually fires a notification —
-    # manage_tasks only has scheduled_time for recurring automation jobs. A
-    # missed RAG retrieval previously left the model with no reminder tool
-    # at all, or made it misuse manage_tasks and create a recurring job
-    # instead of a one-off reminder.
-    "manage_notes",
     # Serving is a core agent capability — keep these always available so
     # the router doesn't lose them on phrasings like "servic" / "fire up" / "boot".
     "serve_model", "serve_preset", "list_serve_presets",

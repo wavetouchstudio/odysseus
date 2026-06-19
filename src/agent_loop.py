@@ -17,6 +17,7 @@ from urllib.parse import urlparse
 
 from src.llm_core import stream_llm, stream_llm_with_fallback, _is_ollama_native_url
 from src.model_context import estimate_tokens
+from src.context_compactor import TOOL_CATALOG_MARKER
 from src.settings import get_setting
 from src.prompt_security import untrusted_context_message
 from src.tool_security import blocked_tools_for_owner
@@ -451,6 +452,14 @@ def _assemble_prompt(tool_names: set, disabled_tools: set = None, compact: bool 
                 one_liners.append(section)
             else:
                 full_blocks.append(section)
+
+    # Marks where the tool catalog begins so context_compactor.trim_for_context
+    # can protect it under a tight token budget instead of blindly keeping
+    # whatever happens to be first (the preamble) and silently dropping every
+    # tool description — see TOOL_CATALOG_MARKER's docstring for why this
+    # matters specifically for small local models.
+    if full_blocks or one_liners:
+        parts.append(TOOL_CATALOG_MARKER.strip())
 
     if full_blocks:
         parts.append("\n\n".join(full_blocks))
@@ -1476,6 +1485,44 @@ async def _run_verifier_subagent(
     return [r.strip() for r in reasons.split(";") if r.strip()]
 
 
+async def _grace_synthesize_answer(
+    messages: List[Dict],
+    endpoint_url: str,
+    model: str,
+    headers: Optional[Dict],
+    max_tokens: int,
+) -> str:
+    """One blunt non-streaming call asking the model to write the final
+    answer NOW from whatever's already in `messages` (every tool result so
+    far), no more tool calls. Used both when the loop-breaker force-answers
+    a stuck round and when the round cap is hit mid-task — both leave the
+    model holding real gathered data but no synthesized answer, and without
+    this the user sees raw round fragments (often just the last, unfinished
+    step) instead of a real response. Returns "" on failure so callers can
+    fall back to an honest apology instead of silently failing.
+    """
+    try:
+        from src.llm_core import llm_call_async
+        _synth_messages = list(messages) + [{
+            "role": "user",
+            "content": (
+                "Using ONLY the information already gathered above, write "
+                "the final answer for the user now. Do NOT call any tools, "
+                "do NOT explain your reasoning — output the finished response "
+                "directly. If some data couldn't be fetched, just work with "
+                "what you have and note what's missing in one short line."
+            ),
+        }]
+        _raw = await llm_call_async(
+            url=endpoint_url, model=model, messages=_synth_messages,
+            headers=headers, temperature=0.3, max_tokens=max_tokens, timeout=60,
+        )
+        return _THINK_RE.sub("", strip_tool_blocks(_raw or "")).strip()
+    except Exception as _e:
+        logger.warning(f"[agent] grace synthesis failed: {_e}")
+        return ""
+
+
 def _empty_response_fallback(
     full_response: str,
     round_reasoning: str,
@@ -1810,13 +1857,21 @@ async def stream_agent_loop(
     # tool, so we don't nudge on harmless transitional text like "let me
     # know what you think".
     _INTENT_RE = re.compile(
-        r"(?:^|\n)\s*(?:let me|i'?ll|i will|going to|let's|i(?:'m| am) going to|i(?:'ll| will) now)\s+"
+        r"(?:^|\n)\s*(?:"
+        r"(?:let me|i'?ll|i will|going to|let's|i(?:'m| am) going to|i(?:'ll| will) now)\s+"
         r"(?:tail|check|investigate|look at|see|read|fetch|inspect|"
         r"verify|diagnose|examine|audit|review|analyze|analyse|scan|assess|"
         r"debug|capture|grab|pull|view|run|call|"
         r"trigger|launch|start|kick off|stop|kill|restart|adopt|serve|"
         r"register|list|search|find|query|hit|ping|test|validate|confirm|"
         r"count|measure|compare|report|summarize|summarise|enumerate)"
+        r"|"
+        # Bare imperative-to-self announcement with no pronoun lead-in —
+        # "Call manage_notes." / "Use write_file now." Common on models that
+        # narrate reasoning then drop straight into a terse self-instruction
+        # instead of actually emitting the tool call.
+        r"(?:call|use|invoke)\s+[a-z][a-z0-9_]*"
+        r")"
         r"\b[^.\n]{0,140}",
         re.IGNORECASE,
     )
@@ -2049,29 +2104,10 @@ async def stream_agent_loop(
             if not _THINK_RE.sub("", strip_tool_blocks(round_response)).strip():
                 # The model burned its budget gathering data but never wrote a
                 # final answer (common with weaker models on multi-source
-                # briefings). Salvage it: one blunt non-streaming synthesis call
-                # over the full conversation (which already holds every tool
-                # result) before falling back to the canned apology.
-                _synth = ""
-                try:
-                    from src.llm_core import llm_call_async
-                    _synth_messages = list(messages) + [{
-                        "role": "user",
-                        "content": (
-                            "Using ONLY the information already gathered above, write "
-                            "the final answer for the user now. Do NOT call any tools, "
-                            "do NOT explain your reasoning — output the finished response "
-                            "directly. If some data couldn't be fetched, just work with "
-                            "what you have and note what's missing in one short line."
-                        ),
-                    }]
-                    _raw = await llm_call_async(
-                        url=endpoint_url, model=model, messages=_synth_messages,
-                        headers=headers, temperature=0.3, max_tokens=max_tokens, timeout=60,
-                    )
-                    _synth = _THINK_RE.sub("", strip_tool_blocks(_raw or "")).strip()
-                except Exception as _e:
-                    logger.warning(f"[agent] grace synthesis failed: {_e}")
+                # briefings). Salvage it via a fresh synthesis call over the
+                # full conversation (which already holds every tool result)
+                # before falling back to the canned apology.
+                _synth = await _grace_synthesize_answer(messages, endpoint_url, model, headers, max_tokens)
                 if _synth:
                     yield f'data: {json.dumps({"delta": _synth})}\n\n'
                     full_response += _synth
@@ -2173,12 +2209,19 @@ async def stream_agent_loop(
             _intent_text = _THINK_RE.sub("", cleaned_round).strip()
             _intent_match = _INTENT_RE.search(_intent_text) if _intent_text else None
             # Only nudge when the round REALLY looks like an unfinished
-            # promise: short response (<400 chars), no fenced code/answer,
-            # and an action-intent phrase was matched. Long answers that
-            # happen to contain "let me know" are not stalls.
+            # promise: either the whole response is short (<400 chars), or
+            # the matched announcement sits in the last ~150 chars — models
+            # that narrate long chain-of-thought reasoning before dropping
+            # into a terse "Call manage_notes." at the very end are still a
+            # stall, just not a SHORT one. A match buried mid-explanation
+            # (not near the end) is normal prose, not an unfinished promise.
+            _match_near_end = (
+                _intent_match is not None
+                and (len(_intent_text) - _intent_match.end()) < 150
+            )
             _looks_like_promise = (
                 _intent_match is not None
-                and len(_intent_text) < 400
+                and (len(_intent_text) < 400 or _match_near_end)
                 and "```" not in _intent_text
                 and _intent_nudge_count < _MAX_INTENT_NUDGES
             )
@@ -2557,6 +2600,18 @@ async def stream_agent_loop(
     # can show a "Continue" affordance instead of the turn just stopping.
     if _exhausted_rounds:
         logger.info("[agent] round cap (%d) reached mid-task — emitting rounds_exhausted", max_rounds)
+        # Without this, the user's "final answer" is whatever raw fragments
+        # got appended round-by-round — usually dominated by the LAST,
+        # unfinished step (a tool-call announcement, a half-written plan),
+        # which reads like a real but bad answer instead of an honest "still
+        # working" status. Synthesize a real wrap-up from everything already
+        # gathered (messages already holds every tool result, including the
+        # final round's) before telling the client this round is incomplete.
+        _synth = await _grace_synthesize_answer(messages, endpoint_url, model, headers, max_tokens)
+        if _synth:
+            _wrap = "\n\n" + _synth
+            yield f'data: {json.dumps({"delta": _wrap})}\n\n'
+            full_response += _wrap
         yield f'data: {json.dumps({"type": "rounds_exhausted", "rounds": max_rounds})}\n\n'
 
     # If the response is completely empty and no tools were executed,

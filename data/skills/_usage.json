@@ -323,5 +323,72 @@
   "deadlyjrmint@gmail.com::list-obsidian-vault-files-via-mcp-subagent": {
     "uses": 2,
     "last_used": 1780948285
+  },
+  "deadlyjrmint@gmail.com::manage-obsidian-vault-notes-via-api": {
+    "uses": 0,
+    "last_used": null,
+    "necessity": {
+      "necessary": true,
+      "redundant_with": [],
+      "reason": "It captures a specific multi-step procedure for interacting with an external Obsidian API integration."
+    },
+    "audit_verdict": "pass",
+    "audit_by_teacher": false,
+    "audit_worker_model": "gemma4:12b-it-qat",
+    "audited_at": 1781827628.696373
+  },
+  "deadlyjrmint@gmail.com::update-execute-plan-from-scheduled-backlog": {
+    "uses": 0,
+    "last_used": null,
+    "necessity": {
+      "necessary": true,
+      "redundant_with": [],
+      "reason": "It describes a specific multi-step workflow for task grouping and formatting that is not covered by general vault management tools."
+    },
+    "audit_verdict": "needs_work",
+    "audit_by_teacher": false,
+    "audit_worker_model": "gemma4:12b-it-qat",
+    "audited_at": 1781827829.616897
+  },
+  "deadlyjrmint@gmail.com::create-reminder-with-manage-tasks-tool": {
+    "uses": 0,
+    "last_used": null,
+    "necessity": {
+      "necessary": false,
+      "redundant_with": [
+        "set-reminder-via-reminder-tool"
+      ],
+      "reason": "Lower-priority duplicate of set-reminder-via-reminder-tool"
+    },
+    "audit_verdict": "skipped",
+    "audit_by_teacher": false,
+    "audit_worker_model": "gemma4:12b-it-qat",
+    "audited_at": 1781827858.1891391
+  },
+  "deadlyjrmint@gmail.com::set-reminder-via-reminder-tool": {
+    "uses": 0,
+    "last_used": null,
+    "necessity": {
+      "necessary": true,
+      "redundant_with": [],
+      "reason": "It provides specific technical constraints and tool selection logic (using manage_notes over manage_tasks) to prevent incorrect behavior."
+    },
+    "audit_verdict": "pass",
+    "audit_by_teacher": false,
+    "audit_worker_model": "gemma4:12b-it-qat",
+    "audited_at": 1781827925.892606
+  },
+  "deadlyjrmint@gmail.com::set-a-specific-reminder": {
+    "uses": 0,
+    "last_used": null,
+    "necessity": {
+      "necessary": false,
+      "redundant_with": [],
+      "reason": "This skill is redundant as there are already specific tools for creating reminders and it describes a generic task an AI can perform natively."
+    },
+    "audit_verdict": "skipped",
+    "audit_by_teacher": false,
+    "audit_worker_model": "gemma4:12b-it-qat",
+    "audited_at": 1781827939.6855278
   }
 }
