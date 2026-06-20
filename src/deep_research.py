@@ -351,13 +351,19 @@ class DeepResearcher:
             # Synthesis can fail (e.g. the LLM timed out) even though the search
             # rounds did gather findings. Don't throw that work away — return the
             # gathered findings as a basic compiled report instead of claiming
-            # nothing was found (#1551).
-            if findings:
+            # nothing was found (#1551). Exclude caller-supplied seed findings
+            # (prior_findings passed into research(), marked "_seed") — those
+            # are pre-existing context handed in up front, not something THIS
+            # run actually gathered, so presenting one back raw as "gathered
+            # during research" when zero real search rounds ever ran is just
+            # an unprocessed data dump, not a report.
+            real_findings = [f for f in findings if not f.get("_seed")]
+            if real_findings:
                 logger.warning(
                     "Synthesis produced no report; returning %d gathered "
-                    "finding(s) as a fallback", len(findings)
+                    "finding(s) as a fallback", len(real_findings)
                 )
-                return self._fallback_report(question, findings)
+                return self._fallback_report(question, real_findings)
             return "No information could be gathered for this question."
 
         self.evolving_report = report  # preserve pre-synthesis report
@@ -477,23 +483,37 @@ class DeepResearcher:
             round_instruction=round_instruction,
         )
 
-        try:
-            response = await self._llm(
-                [{"role": "user", "content": prompt}],
-                temperature=0.5,
-                max_tokens=4096,
-                timeout=getattr(self, "query_timeout", 120),
-            )
-            queries = self._parse_json_array(response)
-            # Deduplicate
-            new_queries = [q for q in queries if q not in self.queries_used]
-            self.queries_used.update(new_queries)
-            logger.info(f"Round {round_num} queries: {new_queries}")
-            return new_queries
-        except Exception as e:
-            logger.error(f"Query generation failed: {e}")
-            self._emit(phase="warning", message=f"Query generation failed: {e}")
-            return []
+        # Round 1 failing here is catastrophic — _generate_queries returning []
+        # makes the whole loop break before a single search ever runs, so the
+        # run ends in "No information could be gathered" even though nothing
+        # about the QUESTION was the problem. Observed in production: the same
+        # model/endpoint succeeds on most runs and 404s on others (a transient
+        # blip on the remote Ollama host, not a config error), so one retry
+        # after a short backoff is worth it before giving up the whole round.
+        attempts = 2 if round_num == 1 else 1
+        last_err: Optional[Exception] = None
+        for attempt in range(1, attempts + 1):
+            try:
+                response = await self._llm(
+                    [{"role": "user", "content": prompt}],
+                    temperature=0.5,
+                    max_tokens=4096,
+                    timeout=getattr(self, "query_timeout", 120),
+                )
+                queries = self._parse_json_array(response)
+                # Deduplicate
+                new_queries = [q for q in queries if q not in self.queries_used]
+                self.queries_used.update(new_queries)
+                logger.info(f"Round {round_num} queries: {new_queries}")
+                return new_queries
+            except Exception as e:
+                last_err = e
+                if attempt < attempts:
+                    logger.warning(f"Query generation attempt {attempt} failed, retrying: {e}")
+                    await asyncio.sleep(2)
+        logger.error(f"Query generation failed: {last_err}")
+        self._emit(phase="warning", message=f"Query generation failed: {last_err}")
+        return []
 
     # ------------------------------------------------------------------
     # SEARCH + EXTRACT

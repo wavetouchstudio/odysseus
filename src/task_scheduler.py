@@ -1719,8 +1719,42 @@ class TaskScheduler:
             extraction_concurrency=extraction_concurrency,
         )
 
+        # Scheduled "digest" tasks (game-news-gather.py / ufc-news-gather.py /
+        # llm-news-gather.py) prepend a live-context dump (YouTube/Reddit/Steam
+        # data, often 5-10K+ chars) to task.prompt, ending with this marker
+        # before the actual research brief. DeepResearcher embeds `question`
+        # verbatim in EVERY internal call — plan, category, every round's
+        # query-gen, every round's should-stop, plus synthesis and the final
+        # report. Passing the whole live-context blob as `question` meant
+        # that dump got repeated 15-25+ times per run; on a slow local model
+        # that's enough prefill cost to blow through the per-call timeout
+        # across the whole fallback cascade and return zero queries (#— the
+        # "No information could be gathered" / 0 queries / 0 URLs failure).
+        # Split it: pass only the short brief as `question`, and seed the
+        # live-context once as a capped synthesis finding so the final report
+        # still benefits from it without paying the cost on every call.
+        _live_ctx_marker = "=== END LIVE CONTEXT -- BEGIN DEEP RESEARCH ==="
+        _raw_prompt = task.prompt or ""
+        _question = _raw_prompt
+        _prior_findings = None
+        if _live_ctx_marker in _raw_prompt:
+            _live_ctx, _, _brief = _raw_prompt.partition(_live_ctx_marker)
+            _live_ctx = _live_ctx.strip()
+            _brief = _brief.strip()
+            if _brief:
+                _question = _brief
+            if _live_ctx:
+                _cap = 4000
+                _seed_text = _live_ctx[:_cap] + ("\n...[live context truncated]" if len(_live_ctx) > _cap else "")
+                _prior_findings = [{
+                    "url": "",
+                    "title": "Live community context (gathered before research started)",
+                    "summary": _seed_text,
+                    "_seed": True,
+                }]
+
         started_ts = time.time()
-        report = await researcher.research(task.prompt)
+        report = await researcher.research(_question, prior_findings=_prior_findings)
         completed_ts = time.time()
         try:
             stats = researcher.get_stats() or {}

@@ -1733,7 +1733,37 @@ function _switchTab(tab) {
   });
   if (tab === 'tasks') _renderMainView();
   else if (tab === 'activity') _renderActivityView();
+  else if (tab === 'reports') _renderReportsView();
   else if (tab === 'new') _showPresetPicker();
+}
+
+// Shared run → entry mapper. Used by both the Activity view and the Reports
+// view so "Open in chat" / "Visual report" behave identically everywhere.
+function _mapRunToEntry(r) {
+  let resultText = r.result || r.error || '';
+  if (!resultText) {
+    if (r.status === 'queued')  resultText = '_Queued — waiting for a free slot…_';
+    if (r.status === 'running') resultText = '_Running…_';
+  }
+  return {
+    // Surface the actual task_type ('llm' | 'research' | 'action') so the
+    // chat-worthy check in _renderActivityEntry can decide between "Open
+    // in chat" (llm/research) and "Copy log" (action). Was hardcoded
+    // 'task', which never matched and made Open-in-chat dead code.
+    kind: r.task_type || 'llm',
+    taskName: r.task_name || (r.task_type === 'action' ? (r.action || 'Action') : 'Task'),
+    taskId: r.task_id,
+    action: r.action || '',
+    result: resultText,
+    prompt: '',
+    ts: r.finished_at || r.started_at,
+    status: r.status,
+    model: r.model || '',
+    endpointUrl: r.endpoint_url || '',
+    sessionId: r.session_id || '',
+    researchId: r.research_id || '',
+    output_target: r.output_target || 'session',
+  };
 }
 
 // ---- Activity view (assistant session log) ----
@@ -1865,38 +1895,105 @@ async function _renderActivityView() {
       list.innerHTML = '<div style="opacity:0.5;padding:12px;">No activity yet. Scheduled tasks will log here once they run.</div>';
       return;
     }
-    _activityEntries = runs.map(r => {
-      let resultText = r.result || r.error || '';
-      if (!resultText) {
-        if (r.status === 'queued')  resultText = '_Queued — waiting for a free slot…_';
-        if (r.status === 'running') resultText = '_Running…_';
-      }
-      return {
-        // Surface the actual task_type ('llm' | 'research' | 'action') so the
-        // chat-worthy check in _renderActivityEntry can decide between "Open
-        // in chat" (llm/research) and "Copy log" (action). Was hardcoded
-        // 'task', which never matched and made Open-in-chat dead code.
-        kind: r.task_type || 'llm',
-        taskName: r.task_name || (r.task_type === 'action' ? (r.action || 'Action') : 'Task'),
-        taskId: r.task_id,
-        action: r.action || '',
-        result: resultText,
-        prompt: '',
-        ts: r.finished_at || r.started_at,
-        status: r.status,
-        model: r.model || '',
-        endpointUrl: r.endpoint_url || '',
-        sessionId: r.session_id || '',
-        researchId: r.research_id || '',
-        output_target: r.output_target || 'session',
-      };
-    });
+    _activityEntries = runs.map(_mapRunToEntry);
     _buildChips();
     _applyFilter();
   } catch (e) {
     const list = document.getElementById('tasks-activity-list');
     if (list) list.innerHTML = `<div style="opacity:0.5;padding:12px;">Failed to load activity: ${_escHtml(e.message || String(e))}</div>`;
   }
+}
+
+// ---- Reports view (research-type tasks, latest run each, jump straight
+// to the Visual Report) ----
+
+async function _renderReportsView() {
+  const modal = document.getElementById('tasks-modal');
+  const body = modal?.querySelector('.modal-body');
+  if (!body) return;
+  body.innerHTML = `
+    <div class="admin-card" style="flex:1;display:flex;flex-direction:column;overflow:hidden;">
+      <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:2px;">
+        <h2 style="margin:0;padding:0;line-height:1;">Reports</h2>
+        <button class="memory-toolbar-btn" id="tasks-reports-refresh" title="Refresh" style="margin-left:auto;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;"><path d="M1 4v6h6"/><path d="M23 20v-6h-6"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/></svg></button>
+      </div>
+      <p class="memory-desc">Latest run of every digest/research task — open the visual report in one click.</p>
+      <div id="tasks-reports-list" class="memory-list" style="flex:1;overflow:auto;font-size:13px;"></div>
+    </div>
+  `;
+  document.getElementById('tasks-reports-refresh').addEventListener('click', _renderReportsView);
+
+  const list = document.getElementById('tasks-reports-list');
+  if (list) list.appendChild(spinnerModule.createLoadingRow('Loading…'));
+
+  try {
+    const res = await fetch(`${API_BASE}/api/tasks/runs/recent?limit=200`, { credentials: 'same-origin' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    const runs = data.runs || [];
+    // One row per research task, latest run only — runs are already ordered
+    // newest-first by the API, so the first match per task_id wins.
+    const seen = new Set();
+    const entries = [];
+    for (const r of runs) {
+      const entry = _mapRunToEntry(r);
+      if (entry.kind !== 'research' || !entry.researchId) continue;
+      if (seen.has(entry.taskId)) continue;
+      seen.add(entry.taskId);
+      entries.push(entry);
+    }
+    if (!list) return;
+    if (entries.length === 0) {
+      list.innerHTML = '<div style="opacity:0.5;padding:12px;">No report-style tasks have run yet. Research-type scheduled tasks (digests, weather, etc.) show up here once they\'ve run at least once.</div>';
+      return;
+    }
+    _reportEntries = entries;
+    list.innerHTML = entries.map((e, i) => _renderReportEntry(e, i)).join('');
+    _wireReportRows(list);
+  } catch (e) {
+    if (list) list.innerHTML = `<div style="opacity:0.5;padding:12px;">Failed to load reports: ${_escHtml(e.message || String(e))}</div>`;
+  }
+}
+
+let _reportEntries = [];
+
+function _renderReportEntry(entry, idx) {
+  const status = entry.status === 'error' ? 'error' : entry.status === 'success' ? 'ok' : 'info';
+  const statusDot = `<span class="task-log-status task-log-status-${status}" title="${status}"></span>`;
+  const tsLabel = _relativeTime(entry.ts);
+  const tsAbs = entry.ts ? new Date(entry.ts).toLocaleString() : '';
+  const hue = _categoryHue(entry.taskName, entry.kind);
+  return `
+    <div class="task-log-entry" style="--cat-hue:${hue};" data-entry-idx="${idx}">
+      <div class="task-log-row" style="display:flex;align-items:center;gap:8px;">
+        ${statusDot}
+        <span class="task-log-title" style="font-weight:600;flex:1;">${_escHtml(entry.taskName || 'Report')}</span>
+        <span class="task-log-time" title="${_escHtml(tsAbs)}">${_escHtml(tsLabel)}</span>
+      </div>
+      <div class="task-log-actions" style="display:flex;gap:6px;margin-top:6px;">
+        <button class="task-log-open-report report-row-btn" type="button" title="Open the visual report">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5"/></svg>
+          Visual Report
+        </button>
+        <button class="task-log-open-chat report-row-btn" type="button" title="Open this result in a chat">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          Open in chat
+        </button>
+      </div>
+    </div>
+  `;
+}
+
+function _wireReportRows(list) {
+  list.querySelectorAll('.task-log-entry').forEach(row => {
+    const idx = parseInt(row.dataset.entryIdx, 10);
+    const entry = _reportEntries[idx];
+    if (!entry) return;
+    row.querySelector('.task-log-open-report')?.addEventListener('click', () => {
+      if (entry.researchId) window.open(`${API_BASE}/api/research/report/${encodeURIComponent(entry.researchId)}`, '_blank');
+    });
+    row.querySelector('.task-log-open-chat')?.addEventListener('click', () => _openResultInChat(entry));
+  });
 }
 
 let _activityEntries = [];
@@ -2482,9 +2579,10 @@ function _renderMainView() {
 
 // ---- Modal ----
 
-export function openTasks(focusId) {
+export function openTasks(focusId, initialTab) {
   if (_open) {
-    // Already open — just focus the requested task.
+    // Already open — switch tab if one was requested, then focus the task.
+    if (initialTab) _switchTab(initialTab);
     if (focusId) _focusTask(focusId);
     return;
   }
@@ -2514,6 +2612,10 @@ export function openTasks(focusId) {
         <button class="memory-tab tasks-tab" data-tab="activity" role="tab" aria-selected="false">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
           Activity
+        </button>
+        <button class="memory-tab tasks-tab" data-tab="reports" role="tab" aria-selected="false">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5"/></svg>
+          Reports
         </button>
         <button class="memory-tab tasks-tab" data-tab="new" role="tab" aria-selected="false">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
@@ -2588,8 +2690,8 @@ export function openTasks(focusId) {
   // populated shell (header/search/sort/empty list with a spinner row) instead
   // of an empty modal-body that fills in after the fetch resolves — that delay
   // was visible as a "flicker" right after opening.
-  _activeTab = 'tasks';
-  _switchTab('tasks');
+  _activeTab = initialTab || 'tasks';
+  _switchTab(_activeTab);
   _fetchTasks().then(() => {
     // Re-render so the list swaps the Loading row for real cards.
     _renderList();

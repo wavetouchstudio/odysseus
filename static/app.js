@@ -908,6 +908,16 @@ function initializeEventListeners() {
     });
   }
 
+  // Reports button — same Tasks modal, jumps straight to the Reports tab so
+  // a digest/weather visual report is two clicks away instead of having to
+  // go through Tasks → Activity → search → open entry → Visual Report.
+  const toolReportsBtn = el('tool-reports-btn');
+  if (toolReportsBtn) {
+    toolReportsBtn.addEventListener('click', () => {
+      if (tasksModule) tasksModule.openTasks(null, 'reports');
+    });
+  }
+
   // Calendar tool button
   const toolCalendarBtn = el('tool-calendar-btn');
   if (toolCalendarBtn) {

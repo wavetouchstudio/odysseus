@@ -303,7 +303,7 @@ Generate an image. Line 1 = description, line 2 = model name or `[Model: checkpo
     "list_models": "- ```list_models``` — Show all available AI models across all endpoints. Use when user asks what models are available.",
     "manage_session": "- ```manage_session``` — Rename, archive, delete, fork, switch, or `list` chats (the UI calls them 'chats'; 'session' is internal). Line 1 = action (list/switch/rename/archive/unarchive/delete/important/unimportant/truncate/fork), Line 2 = exact chat id from `list_sessions` (or `current` where supported). For delete/archive/truncate, always list first and reuse the exact id; never invent placeholder ids. `switch`/`open` returns a clickable anchor link the user can tap to open the chat — use for \"open my X chat\".",
     "manage_memory": "- ```manage_memory``` — Manage the user's persistent memory (facts, identity, preferences, context that persists across chats). Line 1 = action (list/add/edit/delete/search), rest = content. Use when user says 'remember this', states identity facts like 'my name is <name>' / 'call me <name>' / 'I live in <place>', or asks about stored memories.",
-    "manage_skills": "- ```manage_skills``` — Skill registry (SKILL.md format). Args (JSON): {\"action\": \"list|view|view_ref|search|add|edit|patch|publish|delete\", ...}. `list` returns published skills only; `view name=foo` fetches the full SKILL.md; `view_ref name=foo path=...` loads a reference file under the skill directory. For `add`, provide an explicit kebab-case `name` and only report the exact returned name, because storage may normalize or dedupe it. Use this BEFORE doing domain work — there may already be a published procedure that prescribes the correct steps. Only published skills are injected; drafts are user-reviewed before publishing.",
+    "manage_skills": "- ```manage_skills``` — Skill registry (SKILL.md format), READ-ONLY for you. Args (JSON): {\"action\": \"list|view|view_ref|search\", ...}. `list` returns published skills only; `view name=foo` fetches the full SKILL.md; `view_ref name=foo path=...` loads a reference file under the skill directory. Use this BEFORE doing domain work — there may already be a published procedure that prescribes the correct steps. Do NOT use action='add' — skill self-creation is disabled; if you learn something worth keeping, say so in your answer instead of authoring a skill.",
     "manage_tasks": "- ```manage_tasks``` — Create and manage scheduled background tasks (recurring AI jobs). Args (JSON): {\"action\": \"list|create|edit|delete|pause|resume|run\", ...}",
     "manage_endpoints": "- ```manage_endpoints``` — Add, remove, or configure AI model API endpoints. Args (JSON): {\"action\": \"list|add|delete|enable|disable\", ...}. Use when user wants to add a new AI provider.",
     "manage_mcp": "- ```manage_mcp``` — Manage MCP (Model Context Protocol) tool servers — external tools that extend your capabilities. Args (JSON): {\"action\": \"list|add|delete|reconnect|list_tools\", ...}",
@@ -1911,8 +1911,25 @@ async def stream_agent_loop(
         elif _is_api_model:
             # Filter builtin schemas by RAG-selected tools, but ALWAYS include MCP
             # schemas — see _select_api_tool_schemas (#1789).
+            # ALWAYS_AVAILABLE (web_search, bash, read_file, etc.) is unioned into
+            # the text-prompt path inside _build_base_prompt, but that union never
+            # propagated to _relevant_tools itself — so native function-calling
+            # models (anything matching _is_api_model: cloud APIs, qwen3/gemini/
+            # gpt/claude/mistral/llama-3.1+ by name) got ONLY the raw RAG/keyword
+            # result with no safety net. A retrieval miss meant the tool was
+            # invisible, not just unlikely — e.g. a model asked to search the web
+            # could end up with no web_search schema at all and confidently claim
+            # it doesn't have one. Apply the same union here so native models get
+            # the identical guarantee the text-prompt path already had — but ONLY
+            # for RAG/keyword-derived sets. _caller_scoped_tools means the caller
+            # (e.g. /api/subagent with an explicit tools=[...] list) deliberately
+            # restricted the grant; widening that would break intentional scoping.
+            _api_relevant_tools = _relevant_tools
+            if _relevant_tools is not None and not _caller_scoped_tools:
+                from src.tool_index import ALWAYS_AVAILABLE
+                _api_relevant_tools = set(_relevant_tools) | set(ALWAYS_AVAILABLE)
             all_tool_schemas = _select_api_tool_schemas(
-                FUNCTION_TOOL_SCHEMAS, mcp_schemas, _relevant_tools, _needs_admin,
+                FUNCTION_TOOL_SCHEMAS, mcp_schemas, _api_relevant_tools, _needs_admin,
                 restrict_mcp=_caller_scoped_tools,
             )
             if disabled_tools:

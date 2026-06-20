@@ -1,90 +1,7 @@
 {
-  "deadlyjrmint@gmail.com::append-tasks-to-a-markdown-file-in-obsidian": {
-    "uses": 31,
-    "last_used": 1780707768,
-    "audit_verdict": "inconclusive",
-    "audit_by_teacher": false,
-    "audit_worker_model": "deepseek-v4-pro:cloud",
-    "audited_at": 1780704307.719743
-  },
-  "deadlyjrmint@gmail.com::resolve-obsidian-path-mismatches": {
-    "uses": 0,
-    "last_used": null,
-    "audit_verdict": "inconclusive",
-    "audit_by_teacher": false,
-    "audit_worker_model": "deepseek-v4-pro:cloud",
-    "audited_at": 1780704308.9503691
-  },
-  "deadlyjrmint@gmail.com::append-text-to-obsidian-note": {
-    "uses": 30,
-    "last_used": 1780774183,
-    "necessity": {
-      "necessary": true,
-      "redundant_with": [],
-      "reason": "It provides a specific procedure for appending text to an existing markdown file in an Obsidian vault."
-    },
-    "audit_verdict": "inconclusive",
-    "audit_by_teacher": false,
-    "audit_worker_model": "openai/gpt-3.5-turbo",
-    "audited_at": 1780741145.13823
-  },
-  "skill": {
-    "uses": 0,
-    "last_used": null,
-    "necessity": {
-      "necessary": true,
-      "redundant_with": [],
-      "reason": "Captures a specific and important pattern for ensuring successful writes in agent workflows"
-    },
-    "audit_verdict": "inconclusive",
-    "audit_by_teacher": false,
-    "audit_worker_model": "openai/gpt-3.5-turbo",
-    "audited_at": 1780736435.46326
-  },
-  "deadlyjrmint@gmail.com::skill": {
-    "uses": 0,
-    "last_used": null,
-    "necessity": {
-      "necessary": true,
-      "redundant_with": [],
-      "reason": "It provides a specific and important procedure for ensuring the success of write operations."
-    },
-    "audit_verdict": "inconclusive",
-    "audit_by_teacher": false,
-    "audit_worker_model": "openai/gpt-3.5-turbo",
-    "audited_at": 1780741126.0281453
-  },
-  "deadlyjrmint@gmail.com::list-files-in-relative-directory": {
-    "uses": 0,
-    "last_used": null,
-    "necessity": {
-      "necessary": true,
-      "redundant_with": [],
-      "reason": "The skill provides a specific procedure for resolving and listing files in a user-specified relative directory path when direct tool access fails."
-    },
-    "audit_verdict": "inconclusive",
-    "audit_by_teacher": false,
-    "audit_worker_model": "openai/gpt-3.5-turbo",
-    "audited_at": 1780741201.097293
-  },
-  "deadlyjrmint@gmail.com::contact-subagent": {
-    "uses": 43,
-    "last_used": 1780955693,
-    "necessity": {
-      "necessary": true,
-      "redundant_with": [
-        "contact-subagent"
-      ],
-      "reason": "It enables efficient delegation without redundancy."
-    },
-    "audit_verdict": "pass",
-    "audit_by_teacher": false,
-    "audit_worker_model": "gemma4:12b",
-    "audited_at": 1780798940.2127075
-  },
   "deadlyjrmint@gmail.com::clean-chat-history": {
-    "uses": 35,
-    "last_used": 1781801506,
+    "uses": 39,
+    "last_used": 1781921928,
     "necessity": {
       "necessary": true,
       "redundant_with": [],
@@ -158,16 +75,24 @@
       {
         "ts": 1781801506,
         "session_id": null
+      },
+      {
+        "ts": 1781837496,
+        "session_id": null
+      },
+      {
+        "ts": 1781921665,
+        "session_id": null
+      },
+      {
+        "ts": 1781921813,
+        "session_id": null
+      },
+      {
+        "ts": 1781921928,
+        "session_id": null
       }
     ]
-  },
-  "deadlyjrmint@gmail.com::write-verify-pair": {
-    "uses": 0,
-    "last_used": null,
-    "audit_verdict": "inconclusive",
-    "audit_by_teacher": false,
-    "audit_worker_model": "gemma4:12b",
-    "audited_at": 1780798283.8183303
   },
   "deadlyjrmint@gmail.com::consolidate-memories": {
     "uses": 1,
@@ -201,132 +126,9 @@
       }
     ]
   },
-  "deadlyjrmint@gmail.com::read-content-from-a-specific-obsidian-directory": {
-    "uses": 0,
-    "last_used": null,
-    "necessity": {
-      "necessary": false,
-      "redundant_with": [],
-      "reason": "The procedure is a simple combination of existing list\u2011and\u2011read tools, so it can be performed without a dedicated skill."
-    },
-    "audit_verdict": "pass",
-    "audit_by_teacher": false,
-    "audit_worker_model": "gemma4:12b",
-    "audited_at": 1780819996.3966599
-  },
-  "deadlyjrmint@gmail.com::resolve-folder-path-ambiguities-via-listing": {
-    "uses": 0,
-    "last_used": null,
-    "necessity": {
-      "necessary": false,
-      "redundant_with": [],
-      "reason": "Duplicate functionality"
-    },
-    "audit_verdict": "pass",
-    "audit_by_teacher": false,
-    "audit_worker_model": "gemma4:12b",
-    "audited_at": 1780820361.4979293
-  },
-  "deadlyjrmint@gmail.com::delegate-obsidian-content-creation": {
-    "uses": 9,
-    "last_used": 1780905254,
-    "necessity": {
-      "necessary": true,
-      "redundant_with": [],
-      "reason": "This skill captures specific non-obvious procedure: delegating complex markdown-to-obsidian tasks to subagents with explicit instruction requirements (tool usage) and verification steps that other sim"
-    },
-    "audit_verdict": "pass",
-    "audit_by_teacher": false,
-    "audit_worker_model": "qwen3.5:0.8b",
-    "audited_at": 1780905147.354549
-  },
-  "deadlyjrmint@gmail.com::accessing-hidden-mcp-tools-via-subagent-dispatch": {
-    "uses": 26,
-    "last_used": 1780974571,
-    "audit_verdict": "inconclusive",
-    "audit_by_teacher": false,
-    "audit_worker_model": "qwen3.5:0.8b",
-    "audited_at": 1780904826.6915016
-  },
-  "deadlyjrmint@gmail.com::create-files-in-obsidian-using-sub-agent-tool-delegation": {
-    "uses": 2,
-    "last_used": 1780904934,
-    "audit_verdict": "fail",
-    "audit_by_teacher": true,
-    "audit_worker_model": "qwen3.5:0.8b",
-    "audit_teacher_model": "gpt-oss:120b",
-    "audited_at": 1780905115.9953425
-  },
-  "deadlyjrmint@gmail.com::create-subagent-delegation-payload": {
-    "uses": 0,
-    "last_used": null,
-    "necessity": {
-      "necessary": true,
-      "redundant_with": [],
-      "reason": "This skill creates a payload structure for delegating to subagents using tools (like MCP), while `delegate-to-subagent-obsidian-list-files-in-vault` handles actual task execution through agent delegat"
-    },
-    "audit_verdict": "fail",
-    "audit_by_teacher": true,
-    "audit_worker_model": "qwen3.5:0.8b",
-    "audit_teacher_model": "gpt-oss:120b",
-    "audited_at": 1780905430.4265246
-  },
-  "deadlyjrmint@gmail.com::subagent-delegation-for-obsidian-tools": {
-    "uses": 9,
-    "last_used": 1780955693,
-    "audit_verdict": "pass",
-    "audit_by_teacher": false,
-    "audit_worker_model": "qwen3.5:0.8b",
-    "audited_at": 1780905671.5119638
-  },
-  "deadlyjrmint@gmail.com::append-daily-reflections-to-an-obsidian-vault-using-mcp-tool": {
-    "uses": 0,
-    "last_used": null,
-    "necessity": {
-      "necessary": true,
-      "redundant_with": [],
-      "reason": "This skill captures a specific procedure for appending daily reflections to Obsidian vault using MCP tools, which adds value beyond the general 'append-content-to-obsidian-file-via-bash' capability."
-    },
-    "audit_verdict": "inconclusive",
-    "audit_by_teacher": false,
-    "audit_worker_model": "qwen3.5:0.8b",
-    "audited_at": 1780905694.0221064
-  },
-  "deadlyjrmint@gmail.com::append-content-to-obsidian-file-via-bash": {
-    "uses": 0,
-    "last_used": null,
-    "necessity": {
-      "necessary": true,
-      "redundant_with": [],
-      "reason": "This skill captures a non-obvious procedure (Bash script with heredoc syntax) that complements another existing skill rather than duplicating it or being trivial enough for an assistant to do without "
-    },
-    "audit_verdict": "fail",
-    "audit_by_teacher": true,
-    "audit_worker_model": "qwen3.5:0.8b",
-    "audit_teacher_model": "gpt-oss:120b",
-    "audited_at": 1780905769.4661145
-  },
-  "deadlyjrmint@gmail.com::delegate-subagent-call": {
-    "uses": 0,
-    "last_used": null,
-    "necessity": {
-      "necessary": true,
-      "redundant_with": [],
-      "reason": "This skill is specifically for delegating tasks via API endpoints with structured JSON payloads - distinct from execute-handoff-instructions-from-markdown-using-mcp which uses append-only MCP tools an"
-    },
-    "audit_verdict": "fail",
-    "audit_by_teacher": true,
-    "audit_worker_model": "qwen3.5:0.8b",
-    "audit_teacher_model": "gpt-oss:120b",
-    "audited_at": 1780906066.5708306
-  },
-  "deadlyjrmint@gmail.com::list-obsidian-vault-files-via-mcp-subagent": {
-    "uses": 2,
-    "last_used": 1780948285
-  },
   "deadlyjrmint@gmail.com::manage-obsidian-vault-notes-via-api": {
-    "uses": 1,
-    "last_used": 1781831856,
+    "uses": 27,
+    "last_used": 1781922860,
     "necessity": {
       "necessary": true,
       "redundant_with": [],
@@ -340,40 +142,116 @@
       {
         "ts": 1781831856,
         "session_id": null
+      },
+      {
+        "ts": 1781837496,
+        "session_id": null
+      },
+      {
+        "ts": 1781847247,
+        "session_id": null
+      },
+      {
+        "ts": 1781847253,
+        "session_id": null
+      },
+      {
+        "ts": 1781848477,
+        "session_id": null
+      },
+      {
+        "ts": 1781849552,
+        "session_id": null
+      },
+      {
+        "ts": 1781849586,
+        "session_id": null
+      },
+      {
+        "ts": 1781849622,
+        "session_id": null
+      },
+      {
+        "ts": 1781849811,
+        "session_id": null
+      },
+      {
+        "ts": 1781849947,
+        "session_id": null
+      },
+      {
+        "ts": 1781849964,
+        "session_id": null
+      },
+      {
+        "ts": 1781850002,
+        "session_id": null
+      },
+      {
+        "ts": 1781850069,
+        "session_id": null
+      },
+      {
+        "ts": 1781850138,
+        "session_id": null
+      },
+      {
+        "ts": 1781850232,
+        "session_id": null
+      },
+      {
+        "ts": 1781850345,
+        "session_id": null
+      },
+      {
+        "ts": 1781850485,
+        "session_id": null
+      },
+      {
+        "ts": 1781850557,
+        "session_id": null
+      },
+      {
+        "ts": 1781852104,
+        "session_id": null
+      },
+      {
+        "ts": 1781854886,
+        "session_id": null
+      },
+      {
+        "ts": 1781854987,
+        "session_id": null
+      },
+      {
+        "ts": 1781855003,
+        "session_id": null
+      },
+      {
+        "ts": 1781920086,
+        "session_id": null
+      },
+      {
+        "ts": 1781921665,
+        "session_id": null
+      },
+      {
+        "ts": 1781921813,
+        "session_id": null
+      },
+      {
+        "ts": 1781921928,
+        "session_id": null
+      },
+      {
+        "ts": 1781922860,
+        "session_id": null
       }
     ]
   },
-  "deadlyjrmint@gmail.com::update-execute-plan-from-scheduled-backlog": {
-    "uses": 0,
-    "last_used": null,
-    "necessity": {
-      "necessary": true,
-      "redundant_with": [],
-      "reason": "It describes a specific multi-step workflow for task grouping and formatting that is not covered by general vault management tools."
-    },
-    "audit_verdict": "needs_work",
-    "audit_by_teacher": false,
-    "audit_worker_model": "gemma4:12b-it-qat",
-    "audited_at": 1781827829.616897
-  },
-  "deadlyjrmint@gmail.com::create-reminder-with-manage-tasks-tool": {
-    "uses": 0,
-    "last_used": null,
-    "necessity": {
-      "necessary": false,
-      "redundant_with": [
-        "set-reminder-via-reminder-tool"
-      ],
-      "reason": "Lower-priority duplicate of set-reminder-via-reminder-tool"
-    },
-    "audit_verdict": "skipped",
-    "audit_by_teacher": false,
-    "audit_worker_model": "gemma4:12b-it-qat",
-    "audited_at": 1781827858.1891391
-  },
   "deadlyjrmint@gmail.com::set-reminder-via-reminder-tool": {
-    "uses": 1,
-    "last_used": 1781831856,
+    "uses": 6,
+    "last_used": 1781923580,
     "necessity": {
       "necessary": true,
       "redundant_with": [],
@@ -387,20 +265,144 @@
       {
         "ts": 1781831856,
         "session_id": null
+      },
+      {
+        "ts": 1781832133,
+        "session_id": null
+      },
+      {
+        "ts": 1781832185,
+        "session_id": null
+      },
+      {
+        "ts": 1781832467,
+        "session_id": null
+      },
+      {
+        "ts": 1781832586,
+        "session_id": null
+      },
+      {
+        "ts": 1781923580,
+        "session_id": null
       }
     ]
   },
-  "deadlyjrmint@gmail.com::set-a-specific-reminder": {
+  "deadlyjrmint@gmail.com::extracting-tasks-from-markdown-notes-when-calendar-is-unavai": {
+    "uses": 12,
+    "last_used": 1781922860,
+    "necessity": {
+      "necessary": true,
+      "redundant_with": [],
+      "reason": "It defines a specific fallback procedure and keyword set for task extraction when the primary calendar tool is inaccessible."
+    },
+    "events": [
+      {
+        "ts": 1781850007,
+        "session_id": null
+      },
+      {
+        "ts": 1781850138,
+        "session_id": null
+      },
+      {
+        "ts": 1781850232,
+        "session_id": null
+      },
+      {
+        "ts": 1781850345,
+        "session_id": null
+      },
+      {
+        "ts": 1781850485,
+        "session_id": null
+      },
+      {
+        "ts": 1781850557,
+        "session_id": null
+      },
+      {
+        "ts": 1781852104,
+        "session_id": null
+      },
+      {
+        "ts": 1781854886,
+        "session_id": null
+      },
+      {
+        "ts": 1781854987,
+        "session_id": null
+      },
+      {
+        "ts": 1781855003,
+        "session_id": null
+      },
+      {
+        "ts": 1781920086,
+        "session_id": null
+      },
+      {
+        "ts": 1781922860,
+        "session_id": null
+      }
+    ],
+    "audit_verdict": "pass",
+    "audit_by_teacher": false,
+    "audit_worker_model": "gemma4:12b-it-qat",
+    "audited_at": 1781850102.3577511
+  },
+  "deadlyjrmint@gmail.com::list-uploadeddocuments": {
     "uses": 0,
     "last_used": null,
     "necessity": {
-      "necessary": false,
+      "necessary": true,
       "redundant_with": [],
-      "reason": "This skill is redundant as there are already specific tools for creating reminders and it describes a generic task an AI can perform natively."
+      "reason": "It uniquely lists uploaded documents via manage_documents, a step not covered by any other existing skill."
     },
-    "audit_verdict": "skipped",
+    "audit_verdict": "pass",
     "audit_by_teacher": false,
-    "audit_worker_model": "gemma4:12b-it-qat",
-    "audited_at": 1781827939.6855278
+    "audit_worker_model": "openrouter/free",
+    "audited_at": 1781922855.239267
+  },
+  "deadlyjrmint@gmail.com::obsidian-append-content": {
+    "uses": 0,
+    "last_used": null,
+    "necessity": {
+      "necessary": true,
+      "redundant_with": [
+        "obsidian-append-content"
+      ],
+      "reason": "It captures a specific, non-obvious procedure for appending markdown in Obsidian."
+    },
+    "audit_verdict": "pass",
+    "audit_by_teacher": false,
+    "audit_worker_model": "openrouter/free",
+    "audited_at": 1781923346.688811
+  },
+  "deadlyjrmint@gmail.com::delegate-to-subagent": {
+    "uses": 5,
+    "last_used": 1781939338,
+    "events": [
+      {
+        "ts": 1781936926,
+        "session_id": null
+      },
+      {
+        "ts": 1781937839,
+        "session_id": null
+      },
+      {
+        "ts": 1781938190,
+        "session_id": null
+      },
+      {
+        "ts": 1781939244,
+        "session_id": null
+      },
+      {
+        "ts": 1781939338,
+        "session_id": null
+      }
+    ]
   }
 }

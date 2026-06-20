@@ -172,11 +172,12 @@ def _apply_model_timeout(model: str, requested: int) -> int:
 
 # ── Default model hierarchy ───────────────────────────────────────────────────
 SUBAGENT_HIERARCHY: List[Tuple[str, Optional[str]]] = [
-    ("10.0.0.175:11434",              "gemma4:12b"),            # primary model
-    ("10.0.0.175:11434",              "gpt-oss:20b"),           # reliable fallback
-    ("10.0.0.175:11434",              "hermes:8b"),             # fast warm calls
-    ("10.0.0.175:11434",              "devstral-small-2:latest"),# slow but capable
-    ("openrouter.ai",                 "openrouter/free"),       # free tier cascade
+    ("openrouter.ai",                 "openrouter/free"),         # round-robins across OpenRouter's free models — preferred for subagent fan-out
+    ("openrouter.ai",                 "openai/gpt-oss-120b:free"),# explicit backup if the round-robin lands on a weak/incoherent model
+    ("10.0.0.175:11434",              "gpt-oss:120b"),          # local fallback
+    ("10.0.0.175:11434",              "hf.co/unsloth/Mistral-Small-4-119B-2603-GGUF:UD-IQ3_S"),
+    ("10.0.0.175:11434",              "qwen3-coder-next:q4_K_M"),
+    ("10.0.0.175:11434",              "gemma4:12b-it-qat"),     # small/fast last resort
     ("generativelanguage.googleapis", None),
     ("api.mistral.ai",                None),
 ]

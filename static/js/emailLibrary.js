@@ -2446,6 +2446,7 @@ async function _toggleCardPreview(card, em) {
             <button class="memory-toolbar-btn reader-icon-btn" data-act="ai-reply" title="${data.cached_ai_reply ? 'AI Reply (cached draft ready)' : 'AI Reply (suggest a draft)'}">${_aiReplyIcon(data)}<span class="reader-btn-label">AI reply</span></button>
             <button class="memory-toolbar-btn reader-icon-btn" data-act="summarize" title="Summarize">${_summaryIcon(data)}<span class="reader-btn-label">Summary</span></button>
             <button class="memory-toolbar-btn reader-icon-btn" data-act="from-sender" title="Search text in this thread"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg><span class="reader-btn-label">Search</span></button>
+            <button class="memory-toolbar-btn reader-icon-btn" data-act="archive" title="Archive"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="5" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/></svg><span class="reader-btn-label">Archive</span></button>
             <div class="email-reader-more-wrap" style="position:relative">
               <button class="memory-toolbar-btn reader-icon-btn" data-act="more" title="More actions"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg><span class="reader-btn-label">More</span></button>
             </div>
@@ -2508,6 +2509,11 @@ async function _toggleCardPreview(card, em) {
     reader.querySelector('[data-act="more"]')?.addEventListener('click', (ev) => {
       ev.stopPropagation();
       _showReaderMoreMenu(em, card, reader, ev.currentTarget);
+    });
+    reader.querySelector('[data-act="archive"]')?.addEventListener('click', async (ev) => {
+      ev.stopPropagation();
+      if (!(await _archiveEmailReq(em, state._libFolder || 'INBOX'))) return;
+      await _closeCardAndAdvance(em, card);
     });
     reader.querySelector('[data-act="summarize"]')?.addEventListener('click', async (ev) => {
       ev.stopPropagation();
@@ -4119,6 +4125,7 @@ async function _openEmailAsTab(em, folder) {
             <button class="memory-toolbar-btn reader-icon-btn" data-act="ai-reply" title="${data.cached_ai_reply ? 'AI Reply (cached draft ready)' : 'AI Reply'}">${_aiReplyIcon(data)}<span class="reader-btn-label">AI reply</span></button>
             <button class="memory-toolbar-btn reader-icon-btn" data-act="summarize" title="Summarize">${_summaryIcon(data)}<span class="reader-btn-label">Summary</span></button>
             <button class="memory-toolbar-btn reader-icon-btn" data-act="from-sender" title="Search text in this thread"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg><span class="reader-btn-label">Search</span></button>
+            <button class="memory-toolbar-btn reader-icon-btn" data-act="archive" title="Archive"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="5" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/></svg><span class="reader-btn-label">Archive</span></button>
             <div class="email-reader-more-wrap" style="position:relative">
               <button class="memory-toolbar-btn reader-icon-btn" data-act="more" title="More actions"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg><span class="reader-btn-label">More</span></button>
             </div>
@@ -4159,6 +4166,12 @@ async function _openEmailAsTab(em, folder) {
     reader.querySelector('[data-act="from-sender"]')?.addEventListener('click', async (ev) => {
       ev.stopPropagation();
       try { await _toggleFromSenderPanel(reader, data, ev.currentTarget); } catch {}
+    });
+    reader.querySelector('[data-act="archive"]')?.addEventListener('click', async (ev) => {
+      ev.stopPropagation();
+      if (!(await _archiveEmailReq(em, useFolder))) return;
+      showToast('Archived');
+      Modals.close(modalId);
     });
     reader.querySelector('[data-act="more"]')?.addEventListener('click', (ev) => {
       ev.stopPropagation();
@@ -4273,6 +4286,7 @@ async function _openEmailWindow(em, folder) {
             <button class="memory-toolbar-btn reader-icon-btn" data-act="ai-reply" title="${data.cached_ai_reply ? 'AI Reply (cached draft ready)' : 'AI Reply (suggest a draft)'}">${_aiReplyIcon(data)}<span class="reader-btn-label">AI reply</span></button>
             <button class="memory-toolbar-btn reader-icon-btn" data-act="summarize" title="Summarize">${_summaryIcon(data)}<span class="reader-btn-label">Summary</span></button>
             <button class="memory-toolbar-btn reader-icon-btn" data-act="from-sender" title="Search text in this thread"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg><span class="reader-btn-label">Search</span></button>
+            <button class="memory-toolbar-btn reader-icon-btn" data-act="archive" title="Archive"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="5" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/></svg><span class="reader-btn-label">Archive</span></button>
             <button class="memory-toolbar-btn reader-icon-btn" data-act="unsubscribe" title="Unsubscribe">${_unsubIcon}<span class="reader-btn-label">Unsub</span></button>
             <button class="memory-toolbar-btn reader-icon-btn reader-icon-btn-danger" data-act="block-sender" title="Block sender">${_blockIcon}<span class="reader-btn-label">Block</span></button>
             <button class="memory-toolbar-btn reader-icon-btn reader-icon-btn-danger" data-act="delete-permanent" title="Delete permanently">${_deleteForeverIcon}<span class="reader-btn-label">Delete</span></button>
@@ -4317,6 +4331,12 @@ async function _openEmailWindow(em, folder) {
     bodyEl.querySelector('[data-act="from-sender"]')?.addEventListener('click', async (ev) => {
       ev.stopPropagation();
       try { await _toggleFromSenderPanel(bodyEl, data, ev.currentTarget); } catch {}
+    });
+    bodyEl.querySelector('[data-act="archive"]')?.addEventListener('click', async (ev) => {
+      ev.stopPropagation();
+      if (!(await _archiveEmailReq(em, useFolder))) return;
+      showToast('Archived');
+      Modals.close(winId);
     });
     bodyEl.querySelector('[data-act="more"]')?.addEventListener('click', (ev) => {
       ev.stopPropagation();
@@ -4601,6 +4621,49 @@ function _fitEmailDropdown(dropdown, rect) {
   });
 }
 
+// After an email-library grid card is archived/removed, advance the inline
+// reader to the next neighbour (or previous, if it was the last one) instead
+// of leaving the grid on a stale state. Shared by the "More" menu's Archive
+// item and the dedicated toolbar Archive button.
+async function _closeCardAndAdvance(em, card) {
+  // Pick the next neighbour BEFORE we re-render so we know which email to
+  // jump to. Prefer the next card; fall back to the previous one if this
+  // was the last card.
+  const sibling = _findSiblingEmailCard(card, +1) || _findSiblingEmailCard(card, -1);
+  const nextUid = sibling ? sibling.dataset.uid : null;
+  await _animateEmailCardRemoval([em.uid]);
+  state._libEmails = state._libEmails.filter(e => String(e.uid) !== String(em.uid));
+  _renderGrid();
+  _libCacheWriteBack();
+  if (_backToInboxIfEmpty()) return;
+  if (!nextUid) return;
+  // After _renderGrid, the card nodes are fresh — re-resolve and expand.
+  const grid = document.getElementById('email-lib-grid');
+  const nextCard = grid?.querySelector(`.doclib-card[data-uid="${CSS.escape(String(nextUid))}"]`);
+  const nextEm = state._libEmails.find(e => String(e.uid) === String(nextUid));
+  if (nextCard && nextEm) {
+    _toggleCardPreview(nextCard, nextEm);
+    nextCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+}
+
+// POST the archive request for one email. Returns true on success; shows an
+// error toast and returns false on failure, so callers can decide what to do
+// next (advance the grid, close a standalone reader window, etc.) without
+// duplicating the fetch/error-handling boilerplate three times.
+async function _archiveEmailReq(em, folder) {
+  try {
+    const res = await fetch(`${API_BASE}/api/email/archive/${em.uid}?folder=${encodeURIComponent(folder)}${_acct()}`, { method: 'POST' });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.success === false) throw new Error(data.error || `HTTP ${res.status}`);
+    return true;
+  } catch (e) {
+    console.error('Failed to archive:', e);
+    showToast('Failed to archive email');
+    return false;
+  }
+}
+
 function _showReaderMoreMenu(em, card, reader, anchor) {
   // Toggle: if a dropdown for THIS anchor is already open, close it.
   const existing = document.querySelector('.email-card-dropdown');
@@ -4632,27 +4695,7 @@ function _showReaderMoreMenu(em, card, reader, anchor) {
   const _newTabIcon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>';
   const _checkIcon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
 
-  const closeAndRemove = async () => {
-    // Pick the next neighbour BEFORE we re-render so we know which email to
-    // jump to. Prefer the next card; fall back to the previous one if this
-    // was the last card.
-    const sibling = _findSiblingEmailCard(card, +1) || _findSiblingEmailCard(card, -1);
-    const nextUid = sibling ? sibling.dataset.uid : null;
-    await _animateEmailCardRemoval([em.uid]);
-    state._libEmails = state._libEmails.filter(e => String(e.uid) !== String(em.uid));
-    _renderGrid();
-    _libCacheWriteBack();
-    if (_backToInboxIfEmpty()) return;
-    if (!nextUid) return;
-    // After _renderGrid, the card nodes are fresh — re-resolve and expand.
-    const grid = document.getElementById('email-lib-grid');
-    const nextCard = grid?.querySelector(`.doclib-card[data-uid="${CSS.escape(String(nextUid))}"]`);
-    const nextEm = state._libEmails.find(e => String(e.uid) === String(nextUid));
-    if (nextCard && nextEm) {
-      _toggleCardPreview(nextCard, nextEm);
-      nextCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    }
-  };
+  const closeAndRemove = () => _closeCardAndAdvance(em, card);
 
   const _bubblesIcon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
   const _contactIcon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>';
@@ -4736,15 +4779,7 @@ function _showReaderMoreMenu(em, card, reader, anchor) {
       label: 'Archive',
       icon: _archIcon,
       action: async () => {
-        try {
-          const res = await fetch(`${API_BASE}/api/email/archive/${em.uid}?folder=${encodeURIComponent(state._libFolder)}${_acct()}`, { method: 'POST' });
-          const data = await res.json().catch(() => ({}));
-          if (!res.ok || data.success === false) throw new Error(data.error || `HTTP ${res.status}`);
-        } catch (e) {
-          console.error(e);
-          showToast('Failed to archive email');
-          return;
-        }
+        if (!(await _archiveEmailReq(em, state._libFolder))) return;
         await closeAndRemove();
       },
     },

@@ -712,57 +712,18 @@ async def do_manage_skills(content: str, owner: Optional[str] = None) -> Dict:
         return {"results": text}
 
     if action == "add":
-        if not name:
-            return {
-                "error": "name is required for add. Provide the exact slug the user should see, then report the returned name.",
-                "exit_code": 1,
-            }
-        proc = args.get("procedure")
-        if proc is None:
-            proc = args.get("steps") or []
-        if not proc and not args.get("body_extra") and not args.get("solution"):
-            return {"error": "procedure (or solution body) is required", "exit_code": 1}
-        entry = sm.add_skill(
-            name=args.get("name"),
-            description=(args.get("description") or args.get("title") or "").strip(),
-            category=args.get("category") or "general",
-            tags=args.get("tags") or [],
-            platforms=args.get("platforms") or [],
-            requires_toolsets=args.get("requires_toolsets") or [],
-            fallback_for_toolsets=args.get("fallback_for_toolsets") or [],
-            when_to_use=(args.get("when_to_use") if args.get("when_to_use") is not None
-                         else args.get("problem", "")),
-            procedure=proc,
-            pitfalls=args.get("pitfalls") or [],
-            verification=args.get("verification") or [],
-            status=args.get("status") or "draft",
-            version=args.get("version") or "1.0.0",
-            confidence=args.get("confidence", 0.8),
-            source=args.get("source", "learned"),
-            teacher_model=args.get("teacher_model"),
-            owner=owner,
-            title=args.get("title", ""),
-            problem=args.get("problem", ""),
-            solution=args.get("solution", ""),
-            steps=args.get("steps") or [],
-        )
-        if entry.get("_deduped"):
-            return {"results": (
-                f"A near-identical skill already exists: `{entry['name']}` — not creating "
-                f"a duplicate. View or edit it with action='view', name='{entry['name']}'."
-            )}
-        try:
-            from src.event_bus import fire_event
-            fire_event("skill_added", owner)
-        except Exception:
-            logger.debug("skill_added event dispatch failed", exc_info=True)
-        verify_hint = ""
-        if entry.get("status") == "draft":
-            verify_hint = (
-                "\n\nThis skill is a DRAFT. Run through the procedure once to verify, "
-                f"then publish with action='publish', name='{entry['name']}'."
-            )
-        return {"results": f"Created skill `{entry['name']}` — {entry.get('description','')}{verify_hint}"}
+        # Self-authored skill creation disabled by owner request — the draft
+        # skills the model created on its own (narrow one-offs, duplicates,
+        # wrong-tool guidance) were net-negative clutter, not useful learned
+        # procedures. Skills are now added by the user/operator only.
+        return {
+            "error": (
+                "Skill self-creation is disabled. Do not author new skills — "
+                "if you've learned something worth remembering, mention it in "
+                "your answer instead. The user adds skills manually."
+            ),
+            "exit_code": 1,
+        }
 
     if action == "edit":
         if not name:

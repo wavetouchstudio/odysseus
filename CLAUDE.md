@@ -48,7 +48,7 @@ curl -s -X POST http://localhost:7000/api/subagent \
 ```
 
 **Model omitted** → WaveTouchOS auto-cascades through its hierarchy:
-`gemma4:12b` → `gpt-oss:20b` → `hermes:8b` → `devstral-small-2:latest` → OpenRouter (free) → Gemini → Mistral
+`gpt-oss:120b` → `Mistral-Small-4-119B` → `qwen3-coder-next` → OpenRouter (free) → `ministral-14b-latest` → `gemma4:12b-it-qat`
 
 ---
 
@@ -208,14 +208,14 @@ curl http://localhost:7000/api/subagent/runs
 
 ---
 
-## Local Models (Ollama at localhost:11434)
+## Local Models (Ollama at 10.0.0.175:11434)
 
 The WaveTouchOS subagent uses these models internally. Claude Code does not call Ollama directly — it always goes through `/api/subagent`.
 
-- `gemma4:12b` — primary choice; fast, creative, modern, supports image interpretation
-- `gpt-oss:20b` — reliable fallback
-- `hermes:8b` — fast, good format adherence
-- `devstral-small-2:latest` — capable but slow
+- `gpt-oss:120b` — primary choice; native tool calling, strong reasoning
+- `Mistral-Small-4-119B` (`hf.co/unsloth/Mistral-Small-4-119B-2603-GGUF:UD-IQ3_S`) — agentic coding lineage (Devstral), confirmed working well with tools (Obsidian MCP) despite Ollama not listing a `tools` capability for this quant
+- `qwen3-coder-next` (`qwen3-coder-next:q4_K_M`) — native tool calling, MoE
+- `gemma4:12b-it-qat` — smaller fallback when the above are unavailable
 
 ---
 
