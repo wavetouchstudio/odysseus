@@ -100,9 +100,12 @@ When the WaveTouchOS internal agent calls the `mcp_dispatch` tool, it accepts on
 [obsidian] listvault
 [unreal] exec print("hello")
 [unreal] actors BP_
+[subagent] run web_search | Search for current Bitcoin price and summarize it.
 ```
 
-This shorthand is for the WaveTouchOS internal model (gpt-oss:20b) to use in chat. Claude Code should call `/api/subagent` directly with the tool name instead.
+`[subagent] run <tools-csv> | <prompt>` spawns a headless sub-agent via `/api/subagent` through a direct Python `httpx` call — no shell, no curl, no JSON the model has to hand-construct. Built specifically because the bash+curl approach kept failing for the internal model: nested quote-escaping never resolved cleanly, non-ASCII characters got mangled by the bash-to-native-exe argument bridge on Windows, and the model kept hallucinating a `model` field (`gpt-4`/`gpt-4o`) that doesn't exist on this deployment and made the request 404 before the sub-agent ever ran. None of those are reachable through this path.
+
+This shorthand is for the WaveTouchOS internal model (gpt-oss:120b et al.) to use in chat. Claude Code should call `/api/subagent` directly with the tool name instead — you don't have the bash-quoting/encoding problems this works around.
 
 ---
 

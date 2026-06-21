@@ -58,6 +58,12 @@ ALWAYS_AVAILABLE = frozenset({
     "adopt_served_model",
     # Generic API loopback — the catch-all when no named tool fits.
     "app_api",
+    # mcp_dispatch covers Obsidian/Unreal shorthand AND general sub-agent
+    # delegation ([subagent] run tools | prompt). Unlike manage_notes above,
+    # it has no other coverage path — it isn't in TOOL_DESCRIPTIONS or any
+    # _KEYWORD_HINTS entry, so RAG/keyword retrieval can't surface it on its
+    # own. Without this it's only reachable by luck.
+    "mcp_dispatch",
 })
 
 # Tools that the Personal Assistant always has access to during scheduled

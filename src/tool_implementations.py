@@ -2960,6 +2960,53 @@ async def do_mcp_dispatch(content: str, owner: Optional[str] = None) -> Dict:
     else:
         cmd_args = []
 
+    if server == "subagent" and verb == "run":
+        # General-purpose delegation: [subagent] run <tools-csv> | <prompt>.
+        # Goes through httpx directly — no bash, no curl, no shell quoting, no
+        # JSON the model has to hand-construct. This exists because every one
+        # of those was a real, observed failure mode when the model built a
+        # raw curl command itself: nested quote-escaping that never resolved
+        # cleanly, smart-quote characters getting mangled by the bash-to-
+        # native-exe argument bridge on Windows, and a hallucinated "model"
+        # field (gpt-4/gpt-4o — names that don't exist on this deployment)
+        # that made /api/subagent 404 before the sub-agent ever ran. None of
+        # those failure modes are reachable through this path: there's no
+        # shell involved, and there's no model field for the model to fill in.
+        if len(cmd_args) < 2:
+            return {
+                "error": (
+                    "[subagent] run requires: [subagent] run <tools-csv> | <prompt>\n"
+                    "Tools is a comma-separated list (may be empty), e.g.:\n"
+                    "  [subagent] run web_search | Search for X and summarize it.\n"
+                    "  [subagent] run | Just answer this directly, no tools needed."
+                ),
+                "exit_code": 1,
+            }
+        tools_csv, sub_prompt = cmd_args[0], cmd_args[1]
+        sub_tools = [t.strip() for t in tools_csv.split(",") if t.strip()]
+        if not sub_prompt.strip():
+            return {"error": "[subagent] run: prompt (after the |) is empty", "exit_code": 1}
+        import httpx as _httpx
+        payload = {
+            "prompt": sub_prompt.strip(),
+            "agent": True,
+            "tools": sub_tools,
+            "timeout": 120,
+        }
+        try:
+            async with _httpx.AsyncClient(timeout=130) as client:
+                resp = await client.post(
+                    f"{_COOKBOOK_BASE}/api/subagent",
+                    json=payload,
+                    headers=_internal_headers(owner=owner),
+                )
+            if resp.status_code >= 400:
+                return {"error": f"Subagent HTTP {resp.status_code}: {resp.text[:400]}", "exit_code": 1}
+            data = resp.json()
+            return {"output": data.get("response") or str(data), "exit_code": 0}
+        except Exception as e:
+            return {"error": f"[subagent] run failed: {e}", "exit_code": 1}
+
     _DISPATCH: Dict[tuple, tuple] = {
         ("obsidian", "read"): (
             "obsidian_get_file_contents",

@@ -11,6 +11,7 @@ from typing import Any, Optional
 from core.models import ChatMessage
 from core.database import SessionLocal
 from core.database import Session as DBSession, ModelEndpoint
+from src.constants import DEFAULT_TEMPERATURE
 from src.llm_core import normalize_model_id
 from src.endpoint_resolver import normalize_base
 from src.context_compactor import maybe_compact, trim_for_context
@@ -456,6 +457,15 @@ async def build_chat_context(
     """
     # Preset
     preset = extract_preset(chat_handler, preset_id)
+    # Agent-mode turns call tools; a high sampling temperature makes a model
+    # more likely to ramble through reasoning without ever committing to a
+    # tool call (observed directly: gpt-oss:120b at temp=1.0 produced a
+    # <think> block reasoning about which tool to call, then stopped with no
+    # actual call). /api/subagent already settled on 0.3 for this same
+    # reason — apply the same default here, but only when the user hasn't
+    # picked an explicit preset (an explicit choice should win).
+    if agent_mode and preset_id is None and preset.temperature == DEFAULT_TEMPERATURE:
+        preset.temperature = 0.3
 
     # Preprocess message (CoT, YouTube, VL images, build content). The
     # auto_opened_docs collector captures any docs created server-side

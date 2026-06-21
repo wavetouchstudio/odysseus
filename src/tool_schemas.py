@@ -950,7 +950,7 @@ FUNCTION_TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "mcp_dispatch",
-            "description": "Execute an Obsidian or Unreal MCP operation using a one-line shorthand. Eliminates JSON payload construction — just pass the command string. Use instead of app_api for any Obsidian/Unreal task.",
+            "description": "Execute an Obsidian/Unreal MCP operation, or delegate a task to a headless sub-agent, using a one-line shorthand. Eliminates JSON payload construction — just pass the command string. Use instead of app_api or hand-built curl for any of these.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -965,8 +965,15 @@ FUNCTION_TOOL_SCHEMAS = [
                             "  [obsidian] listvault\n"
                             "  [unreal] exec | <python_code>\n"
                             "  [unreal] actors [<name_prefix>]\n"
-                            "Pipe | separates filepath from content. "
-                            "Everything right of | is the content string."
+                            "  [subagent] run <tools-csv> | <prompt>\n"
+                            "Pipe | separates the first arg from the rest. "
+                            "Everything right of | is the content/prompt string.\n"
+                            "[subagent] run spawns a headless tool-capable sub-agent: "
+                            "tools-csv is a comma-separated tool list (may be empty), "
+                            "prompt is what it should do. e.g. "
+                            "'[subagent] run web_search | Search for X and summarize it.' "
+                            "Do NOT use bash/curl for this — this is the correct way to "
+                            "delegate to a sub-agent."
                         ),
                     }
                 },

@@ -399,6 +399,25 @@ Body for POST/PUT/PATCH goes in `body` (object). Query params in `query` (object
 **When to prefer named tools over app_api:** if a named wrapper exists (list_email_accounts, list_emails, read_email, manage_calendar, manage_notes, list_served_models, etc.) USE IT — it has nicer output formatting and clearer schema. Reach for `app_api` only when there's no wrapper for what you need.
 
 Blocked paths (refused for safety): /api/auth/, /api/users/, /api/tokens/, /api/admin/, /api/backup/restore, /api/email/accounts.""",
+
+    "mcp_dispatch": """\
+```mcp_dispatch
+[subagent] run <tools-csv> | <prompt>
+```
+Spawns a headless, tool-capable sub-agent for a self-contained sub-task — its own multi-round loop with real tool access, returning only the final answer. It has zero memory of this conversation: put everything it needs in `<prompt>`. `<tools-csv>` is a comma-separated list of tool names it's allowed to use (may be empty for a no-tools text answer). Examples:
+```mcp_dispatch
+[subagent] run web_search | Search for the current Bitcoin price and the latest SpaceX Starship news. Write one paragraph per topic.
+```
+```mcp_dispatch
+[subagent] run | Just answer this directly, no tools needed.
+```
+Do NOT try to build a raw JSON payload or curl command for this yourself — that path doesn't exist as a tool and the shorthand above is the only correct way to delegate. Do NOT invent your own tag/markup for this (e.g. `<sub-agent>...</sub-agent>`) — only the exact `[subagent] run ...` line inside the ```mcp_dispatch``` fence is parsed; anything else is just text and nothing will execute.
+
+Also handles Obsidian/Unreal MCP shorthand:
+```mcp_dispatch
+[obsidian] read <filepath>
+```
+Other verbs: `[obsidian] append <filepath> | <content>`, `[obsidian] search <query>`, `[obsidian] list [<directory>]`, `[obsidian] listvault`, `[unreal] exec | <python_code>`, `[unreal] actors [<name_prefix>]`.""",
 }
 
 def get_builtin_overrides() -> dict:

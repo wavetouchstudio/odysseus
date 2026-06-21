@@ -127,8 +127,8 @@
     ]
   },
   "deadlyjrmint@gmail.com::manage-obsidian-vault-notes-via-api": {
-    "uses": 27,
-    "last_used": 1781922860,
+    "uses": 29,
+    "last_used": 1781983983,
     "necessity": {
       "necessary": true,
       "redundant_with": [],
@@ -246,6 +246,14 @@
       {
         "ts": 1781922860,
         "session_id": null
+      },
+      {
+        "ts": 1781983839,
+        "session_id": null
+      },
+      {
+        "ts": 1781983983,
+        "session_id": null
       }
     ]
   },
@@ -289,8 +297,8 @@
     ]
   },
   "deadlyjrmint@gmail.com::extracting-tasks-from-markdown-notes-when-calendar-is-unavai": {
-    "uses": 12,
-    "last_used": 1781922860,
+    "uses": 14,
+    "last_used": 1781983983,
     "necessity": {
       "necessary": true,
       "redundant_with": [],
@@ -344,6 +352,14 @@
       {
         "ts": 1781922860,
         "session_id": null
+      },
+      {
+        "ts": 1781983839,
+        "session_id": null
+      },
+      {
+        "ts": 1781983983,
+        "session_id": null
       }
     ],
     "audit_verdict": "pass",
@@ -380,8 +396,8 @@
     "audited_at": 1781923346.688811
   },
   "deadlyjrmint@gmail.com::delegate-to-subagent": {
-    "uses": 5,
-    "last_used": 1781939338,
+    "uses": 21,
+    "last_used": 1781983983,
     "events": [
       {
         "ts": 1781936926,
@@ -401,6 +417,70 @@
       },
       {
         "ts": 1781939338,
+        "session_id": null
+      },
+      {
+        "ts": 1781939654,
+        "session_id": null
+      },
+      {
+        "ts": 1781939833,
+        "session_id": null
+      },
+      {
+        "ts": 1781939921,
+        "session_id": null
+      },
+      {
+        "ts": 1781940073,
+        "session_id": null
+      },
+      {
+        "ts": 1781940435,
+        "session_id": null
+      },
+      {
+        "ts": 1781940978,
+        "session_id": null
+      },
+      {
+        "ts": 1781941065,
+        "session_id": null
+      },
+      {
+        "ts": 1781941221,
+        "session_id": null
+      },
+      {
+        "ts": 1781942236,
+        "session_id": null
+      },
+      {
+        "ts": 1781942520,
+        "session_id": null
+      },
+      {
+        "ts": 1781942595,
+        "session_id": null
+      },
+      {
+        "ts": 1781944224,
+        "session_id": null
+      },
+      {
+        "ts": 1781976029,
+        "session_id": null
+      },
+      {
+        "ts": 1781976403,
+        "session_id": null
+      },
+      {
+        "ts": 1781983839,
+        "session_id": null
+      },
+      {
+        "ts": 1781983983,
         "session_id": null
       }
     ]
