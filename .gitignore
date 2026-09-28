@@ -93,3 +93,4 @@ compound.config.json
 *.error.log
 _scratch/
 .serena/project.yml
+.serena/project.yml
